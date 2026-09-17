@@ -1,0 +1,573 @@
+---
+title: "01 — Data preparation"
+subtitle: "Raw DFO files to the derived annual and site-level series used by every downstream analysis"
+author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      dpi = 150, fig.align = "center")
+source("00_setup.R")
+library(readxl)
+```
+
+This file turns the raw DFO extracts in `Raw_data/` into the derived series that
+every other script reads. Nothing here is a result; every modelling decision that
+*is* a result lives in `02`–`06`. Run this first — the other files read the CSVs it
+writes to `Outputs/derived/`.
+
+Four DFO datasets and three climate indices are used, as described in Methods
+("Study system and data"):
+
+| Object written | Contents | Used by |
+|---|---|---|
+| `annual_series.csv` | one row per year: occupancy, SSB, prop_old, catch, climate, value | 03, 05 |
+| `section_year.csv` | section × year spawn biomass and presence on the historically-used sections | 02, 03 |
+| `site_year_spawn.csv` | location × year spawn biomass (per-site annual maximum) | 02, 06 |
+| `test_fishery_age.csv` | annual test-fishery age structure, 1975–2024 | 04 |
+| `biosample_annual_by_source.csv` | annual age composition by sampling source and gear | 04 |
+| `catch_decomposition.csv` | catch by year × fishery × season × gear × area | 04 |
+| `site_occupancy_dataset.csv` | site × year presence/absence with predictors | 06 |
+| `area_exploitation.csv` | area-level historical exploitation rate, 1951–1983 | 06 |
+
+---
+
+## 1  Spawn index → per-site annual maxima, section occupancy, SSB
+
+The spawn index estimates spawning biomass from egg deposition; per-record biomass is
+`Surface + Understory + Macrocystis`. Because the *number* of spawn records per site-year
+changes over the series (roughly a third of site-years carry more than one record before
+1985, few afterwards), each location-year is first reduced to its **largest recorded spawn
+event**. Everything downstream is built on these per-site annual maxima.
+
+A section is **occupied** in a year if any spawn record exists there, including records for
+which DFO gives no biomass estimate. A section counts as **historically used** if spawn was recorded there in at least
+`MIN_ACTIVE` (= `r MIN_ACTIVE`) distinct years across 1951–2024. This is a data-driven
+threshold falling in a natural gap in the distribution of years-active, and it defines the
+occupancy denominator `N_all`.
+
+```{r spawn}
+spawn_raw <- read_csv(F_SPAWN, show_col_types = FALSE)
+
+## spawn_all keeps every SoG record; sog additionally requires coordinates, and is
+## used wherever a location has to be placed in space (spatial metrics, maps,
+## exploitation rates). The site-level presence/absence analysis in section 7 needs
+## no coordinates and therefore uses spawn_all, so that a site is not dropped from
+## its own occupancy history merely for lacking a position.
+spawn_sog_raw <- spawn_raw %>%
+  mutate(StatisticalArea = suppressWarnings(as.numeric(StatisticalArea)),
+         Section         = suppressWarnings(as.numeric(Section)),
+         spawn_bio       = rowSums(cbind(Surface, Understory, Macrocystis), na.rm = TRUE)) %>%
+  filter(StatisticalArea %in% OCC_AREAS, Region == SOG_REGION)
+
+## presence rule (00_setup.R): surveyed spawn records, with or without a biomass estimate
+spawn_all <- spawn_sog_raw %>% keep_surveyed()
+
+sog <- spawn_all %>% filter(!is.na(Longitude), !is.na(Latitude))
+
+cat(sprintf("SoG spawn records: %d (%d with coordinates)\n", nrow(spawn_all), nrow(sog)))
+
+## per-site annual maximum (controls for changing reporting frequency)
+site_year <- sog %>%
+  group_by(StatisticalArea, Section, LocationCode, Year) %>%
+  summarise(spawn_bio_sum = sum(spawn_bio, na.rm = TRUE),
+            spawn_bio = max(spawn_bio, na.rm = TRUE),
+            Longitude = first(Longitude), Latitude = first(Latitude),
+            .groups = "drop")
+
+all_years <- min(site_year$Year):max(site_year$Year)
+
+sec_year <- site_year %>%
+  group_by(Section, Year) %>%
+  summarise(biomass = sum(spawn_bio, na.rm = TRUE), .groups = "drop")
+
+## Presence = a surveyed spawn record exists (keep_surveyed, 00_setup.R). Records without a
+## biomass estimate add nothing to biomass sums but count as presence.
+nobio <- with(spawn_sog_raw, is.na(Surface) & is.na(Understory) & is.na(Macrocystis))
+cat(sprintf("SoG records with no biomass estimate: %d (%d Incomplete, excluded; %d surveyed, kept)\n",
+            sum(nobio), sum(nobio & spawn_sog_raw$Method %in% "Incomplete"),
+            sum(nobio & !spawn_sog_raw$Method %in% "Incomplete")))
+
+## Sensitivity (Supplementary Table S7): section occupancy under three presence rules
+occ_rule <- function(rec) {
+  sy_r <- rec %>% filter(!is.na(Longitude), !is.na(Latitude)) %>% distinct(Section, Year)
+  secs <- sy_r %>% count(Section) %>% filter(n >= MIN_ACTIVE) %>% pull(Section)
+  expand_grid(Section = secs, Year = min(rec$Year):max(rec$Year)) %>%
+    left_join(sy_r %>% mutate(p = 1L), by = c("Section", "Year")) %>%
+    group_by(Year) %>%
+    summarise(n_sections = length(secs), n_active = sum(!is.na(p)),
+              occupancy = n_active / n_sections, .groups = "drop")
+}
+occ_rules <- bind_rows(
+  occ_rule(spawn_sog_raw[!nobio, ]) %>% mutate(rule = "Spawn biomass > 0 only"),
+  occ_rule(spawn_sog_raw)           %>% mutate(rule = "All spawn records"),
+  occ_rule(spawn_all)               %>% mutate(rule = "Surveyed spawn records (main analysis)"))
+write_csv(occ_rules, file.path(DERIVED, "occupancy_rule_sensitivity.csv"))
+
+sec_active    <- sec_year %>%
+  group_by(Section) %>% summarise(yrs_active = n_distinct(Year), .groups = "drop")
+hist_sections <- sec_active %>% filter(yrs_active >= MIN_ACTIVE) %>% pull(Section) %>% sort()
+dropped       <- setdiff(sort(unique(site_year$Section)), hist_sections)
+N_all         <- length(hist_sections)
+
+## full section x year grid, zeros filled in
+sy <- expand_grid(Section = hist_sections, Year = all_years) %>%
+  left_join(sec_year, by = c("Section", "Year")) %>%
+  mutate(spawned = !is.na(biomass),
+         biomass = replace_na(biomass, 0))
+
+occ <- sy %>% group_by(Year) %>%
+  summarise(n_active  = sum(spawned),
+            occupancy = n_active / N_all, .groups = "drop")
+
+## annual spawning stock biomass = sum of all spawn records, as in the DFO spawn index
+## (Grinnell et al. 2023). SSB_max = sum of per-site annual maxima, kept as a sensitivity
+## check because multiple records per location-year were more common before the collapse.
+SSB <- spawn_all %>% group_by(Year) %>%
+  summarise(SSB = sum(spawn_bio, na.rm = TRUE), .groups = "drop") %>%
+  left_join(site_year %>% group_by(Year) %>%
+              summarise(SSB_max = sum(spawn_bio, na.rm = TRUE), .groups = "drop"),
+            by = "Year")
+
+cat(sprintf("N_all = %d historically-used sections (dropped: %s)\n",
+            N_all, paste(dropped, collapse = ", ")))
+cat(sprintf("Years-active of the dropped sections: %s\n",
+            paste(sec_active$yrs_active[match(dropped, sec_active$Section)], collapse = ", ")))
+cat(sprintf("Sections with any pre-%d spawning among the dropped: %s\n", BREAK_YEAR,
+            paste(sec_year %>% filter(Section %in% dropped, Year < BREAK_YEAR) %>%
+                    count(Section) %>% mutate(txt = paste0(Section, " (", n, " yr)")) %>%
+                    pull(txt), collapse = ", ")))
+
+## Same object built without the coordinate requirement. Used by the site-level
+## analyses in 06, which need a site's full observation history and do not place it
+## in space; keeping the two objects separate means the spatial metrics never see a
+## location without coordinates, and the occupancy histories never lose one.
+site_year_all <- spawn_all %>%
+  group_by(StatisticalArea, Section, LocationCode, Year) %>%
+  summarise(spawn_bio_sum = sum(spawn_bio, na.rm = TRUE),
+            spawn_bio = max(spawn_bio, na.rm = TRUE), n_records = n(), .groups = "drop")
+
+write_csv(site_year,     file.path(DERIVED, "site_year_spawn.csv"))
+write_csv(site_year_all, file.path(DERIVED, "site_year_spawn_all.csv"))
+write_csv(sy,            file.path(DERIVED, "section_year.csv"))
+```
+
+---
+
+## 2  Biosamples → age composition, selectivity, test-fishery age structure
+
+Each biosample is one collection event (`season` × `sample_number`) assigned to a year,
+statistical area, source and gear. Only fish with an age determination are used, and only
+samples with at least `MIN_FISH` (= `r MIN_FISH`) aged fish.
+
+`prop_old` (age ≥ `r OLD_AGE`) is computed **per sample first** and then averaged across the
+samples in a year, so that a few large samples cannot dominate the annual value. Both a
+weight fraction and a count fraction are retained.
+
+```{r biosample-read}
+bio_raw <- read_csv(F_BIO, show_col_types = FALSE, name_repair = "minimal",
+                    guess_max = 100000)
+names(bio_raw) <- BIO_COLS
+
+bio <- bio_raw %>%
+  mutate(age       = suppressWarnings(as.numeric(age)),
+         length_mm = suppressWarnings(as.numeric(length_mm)),
+         weight_g  = suppressWarnings(as.numeric(weight_g)),
+         stat_area = suppressWarnings(as.numeric(stat_area)),
+         month_n   = suppressWarnings(as.numeric(month)),
+         Year      = recode_two_digit_year(year))
+
+cat(sprintf("Biosample rows: %s | aged fish: %s | years %d-%d\n",
+            format(nrow(bio), big.mark = ","),
+            format(sum(!is.na(bio$age)), big.mark = ","),
+            min(bio$Year, na.rm = TRUE), max(bio$Year, na.rm = TRUE)))
+
+## temporal coverage by statistical area — justifies restricting to BIO_AREAS
+bio %>% filter(!is.na(age)) %>% group_by(stat_area) %>%
+  summarise(n_years = n_distinct(Year), n_fish = n(), .groups = "drop") %>%
+  arrange(desc(n_years)) %>% print(n = 20)
+```
+
+```{r prop-old}
+## annual prop_old for one subset of the biosample, computed per sample then averaged
+prop_old_series <- function(data, label, min_fish = MIN_FISH) {
+  data %>%
+    filter(!is.na(age), age >= 1, !is.na(weight_g)) %>%
+    group_by(Year, season, sample_number) %>%
+    summarise(n_fish = n(),
+              po_wt  = sum(weight_g[age >= OLD_AGE]) / sum(weight_g),
+              po_n   = mean(age >= OLD_AGE), .groups = "drop") %>%
+    filter(n_fish >= min_fish) %>%
+    group_by(Year) %>%
+    summarise(n_samples   = n(),
+              n_aged      = sum(n_fish),
+              prop_old_wt = mean(po_wt),
+              prop_old_n  = mean(po_n), .groups = "drop") %>%
+    mutate(fishery_source = label)
+}
+
+red  <- bio %>% filter(stat_area %in% BIO_AREAS, source == "Reduction Fishery") %>%
+  prop_old_series("Reduction seine")
+roeg <- bio %>% filter(stat_area %in% BIO_AREAS, source == "Roe Fishery", gear == "Gillnet") %>%
+  prop_old_series("Roe gillnet")
+
+## spliced selectivity index: dominant, most size-selective gear of each era.
+## No samples of either gear exist for 1966-1971 (the 1967 collapse and 1968-71 closure).
+prop_old <- bind_rows(red  %>% filter(Year <= 1971),
+                      roeg %>% filter(Year >= 1972)) %>% arrange(Year)
+
+cat(sprintf("prop_old spliced series: %d years | reduction %d-%d, roe gillnet %d-%d\n",
+            nrow(prop_old),
+            min(red$Year), max(red$Year[red$Year <= 1971]),
+            min(roeg$Year[roeg$Year >= 1972]), max(roeg$Year)))
+cat(sprintf("prop_old_wt vs prop_old_n: r = %.3f\n",
+            cor(prop_old$prop_old_wt, prop_old$prop_old_n)))
+
+## gear-specific prop_old, for the catch-weighted removal metrics
+gear_prop <- bio %>%
+  filter(stat_area %in% BIO_AREAS, !is.na(age), age >= 1, !is.na(weight_g)) %>%
+  mutate(gear_grp = gear_group(gear)) %>% filter(gear_grp != "Other") %>%
+  group_by(Year, gear_grp) %>%
+  summarise(prop_old_wt_gear = sum(weight_g[age >= OLD_AGE]) / sum(weight_g),
+            n_g = n(), .groups = "drop")
+
+## annual age composition by sampling source (Fig. 2b) and by source x gear
+bio_by_source <- bio %>%
+  filter(stat_area %in% BIO_AREAS, !is.na(age), age >= 1) %>%
+  mutate(gear_grp = gear_group(gear),
+         src = case_when(
+           source == "Reduction Fishery" ~ "Reduction",
+           source == "Test Fishery"      ~ "Test fishery",
+           source == "Roe Fishery" & gear_grp == "Gillnet" ~ "Roe gillnet",
+           source == "Roe Fishery" & gear_grp == "Seine"   ~ "Roe seine",
+           grepl("Food|Bait", source) ~ "Food and bait",
+           TRUE ~ "Other")) %>%
+  filter(src != "Other") %>%
+  group_by(Year, src) %>%
+  summarise(n_fish  = n(),
+            n_old   = sum(age >= OLD_AGE),
+            n_young = sum(age <  OLD_AGE),
+            prop_old_n  = n_old / n_fish,
+            prop_old_wt = ifelse(sum(!is.na(weight_g)) > 0,
+                                 sum(weight_g[age >= OLD_AGE], na.rm = TRUE) /
+                                   sum(weight_g, na.rm = TRUE), NA_real_),
+            mean_age = mean(age), .groups = "drop") %>%
+  filter(n_fish >= MIN_FISH)
+
+write_csv(bio_by_source, file.path(DERIVED, "biosample_annual_by_source.csv"))
+```
+
+### 2b  Test-fishery age structure (the population index)
+
+The test fishery began in 1975 and samples during the spawning season, so it is the closest
+available fishery-independent index of the spring spawning population. Restricted to
+seine gear in March–May, matching the change-point analysis in `04`.
+
+```{r test-fishery}
+test_age <- bio %>%
+  filter(source == "Test Fishery",
+         gear %in% c("Seine", "Other seine"),
+         month_n %in% 3:5,
+         !is.na(age), age >= 1) %>%
+  group_by(Year) %>%
+  summarise(n_fish    = n(),
+            mean_age  = mean(age),
+            sd_age    = sd(age),
+            n_age4    = sum(age >= 4), n_age5 = sum(age >= 5), n_age6 = sum(age >= 6),
+            n_age7    = sum(age >= 7), n_juv  = sum(age <= 3),
+            .groups   = "drop") %>%
+  filter(n_fish >= MIN_FISH) %>%
+  mutate(prop_age4 = n_age4/n_fish, prop_age5 = n_age5/n_fish,
+         prop_age6 = n_age6/n_fish, prop_age7 = n_age7/n_fish,
+         prop_juv  = n_juv /n_fish,
+         phase     = factor(PHASE3(Year),
+                            levels = c("Pre-collapse","Collapse","Post-collapse")))
+
+cat(sprintf("Test fishery: %d years (%d-%d), %s aged fish\n",
+            nrow(test_age), min(test_age$Year), max(test_age$Year),
+            format(sum(test_age$n_fish), big.mark = ",")))
+write_csv(test_age, file.path(DERIVED, "test_fishery_age.csv"))
+
+## test-fishery prop_old by statistical area x year — predictor for the site-level models
+test_age_area <- bio %>%
+  filter(source == "Test Fishery", stat_area %in% BIO_AREAS,
+         !is.na(age), age >= 1) %>%
+  group_by(Year, stat_area) %>%
+  summarise(n_fish = n(), prop_old = mean(age >= OLD_AGE), .groups = "drop") %>%
+  filter(n_fish >= MIN_FISH)
+write_csv(test_age_area, file.path(DERIVED, "test_fishery_age_by_area.csv"))
+```
+
+### 2c  Length-at-age
+
+```{r length-at-age}
+len_age <- bio %>%
+  filter(stat_area %in% BIO_AREAS,
+         source %in% c("Reduction Fishery","Test Fishery"),
+         !is.na(age), !is.na(length_mm), age %in% 2:10) %>%
+  group_by(Year, age, source) %>%
+  summarise(mean_len_mm = mean(length_mm), n = n(), .groups = "drop") %>%
+  filter(n >= MIN_FISH) %>%
+  mutate(data_source = if_else(source == "Reduction Fishery",
+                               "Reduction fishery", "Test fishery"))
+write_csv(len_age, file.path(DERIVED, "length_at_age.csv"))
+cat(sprintf("Length-at-age series: %d age-year-source cells, %d-%d\n",
+            nrow(len_age), min(len_age$Year), max(len_age$Year)))
+```
+
+---
+
+## 3  Catch: decomposition, and catch-weighted removal of old fish
+
+Catch is reported by season, which spans two calendar years; each record is assigned to the
+calendar year in which the fishery ended (`New_Year = floor(Season/10) + 1`). Catch is
+decomposed four ways — by statistical area, gear, fishery type, and season of capture —
+because it is the *season and gear* of removal, not the tonnage, that determines which ages
+are taken.
+
+```{r catch}
+catch_raw <- read_csv(F_CATCH, show_col_types = FALSE, name_repair = "minimal")
+names(catch_raw) <- make.names(names(catch_raw), unique = TRUE)
+
+catch <- catch_raw %>%
+  mutate(Season   = suppressWarnings(as.numeric(Season)),
+         New_Year = floor(Season/10) + 1,
+         area     = suppressWarnings(as.numeric(Statistical.Area)),
+         catch_t  = parse_number(as.character(Sum.of.Catch.metric.tons)),
+         Gear     = trimws(as.character(Gear)),
+         gear_grp = gear_group(Gear),
+         fishery  = case_when(
+           grepl("Reduction", Fishery, ignore.case = TRUE) ~ "Reduction",
+           grepl("Roe",       Fishery, ignore.case = TRUE) ~ "Roe",
+           grepl("Food|Bait", Fishery, ignore.case = TRUE) ~ "Food and bait",
+           grepl("Spawn|SOK", Fishery, ignore.case = TRUE) ~ "Spawn on kelp",
+           TRUE ~ "Other"),
+         month_txt = trimws(as.character(Month)))
+
+catch_decomp <- catch %>%
+  filter(!is.na(New_Year)) %>%
+  transmute(Year = New_Year, area, section = Section, fishery, gear_grp,
+            season_txt = month_txt, catch_t)
+write_csv(catch_decomp, file.path(DERIVED, "catch_decomposition.csv"))
+
+## core-area catch by gear, used for the removal metrics
+catch_gear <- catch %>%
+  filter(gear_grp != "Other", area %in% BIO_AREAS, New_Year %in% YRS) %>%
+  group_by(Year = New_Year, gear_grp) %>%
+  summarise(catch_t = sum(catch_t, na.rm = TRUE), .groups = "drop")
+
+## gillnet share of the roe fishery (reported in Results 2.2)
+roe_share <- catch %>%
+  filter(fishery == "Roe", area %in% BIO_AREAS, New_Year %in% 1972:2025,
+         gear_grp %in% c("Seine","Gillnet")) %>%
+  group_by(Year = New_Year, gear_grp) %>%
+  summarise(catch_t = sum(catch_t, na.rm = TRUE), .groups = "drop") %>%
+  group_by(Year) %>% mutate(share = catch_t / sum(catch_t)) %>% ungroup() %>%
+  filter(gear_grp == "Gillnet")
+cat(sprintf("Roe gillnet share of roe catch 1972-2025: overall %.0f%%, annual range %.0f-%.0f%% (IQR)\n",
+            100 * with(catch %>% filter(fishery=="Roe", area %in% BIO_AREAS,
+                                        gear_grp %in% c("Seine","Gillnet")),
+                       sum(catch_t[gear_grp=="Gillnet"], na.rm=TRUE)/sum(catch_t, na.rm=TRUE)),
+            100 * quantile(roe_share$share, 0.25, na.rm = TRUE),
+            100 * quantile(roe_share$share, 0.75, na.rm = TRUE)))
+
+## two alternative fishery predictors derived from catch (tested in 05)
+old_removed <- catch_gear %>%
+  left_join(gear_prop %>% select(Year, gear_grp, prop_old_wt_gear), by = c("Year","gear_grp")) %>%
+  left_join(prop_old  %>% select(Year, prop_old_wt), by = "Year") %>%
+  mutate(prop_use      = coalesce(prop_old_wt_gear, prop_old_wt),
+         old_removed_t = catch_t * prop_use) %>%
+  group_by(Year) %>%
+  summarise(catch_total_t = sum(catch_t, na.rm = TRUE),
+            old_removed_t = sum(old_removed_t, na.rm = TRUE), .groups = "drop") %>%
+  left_join(SSB, by = "Year") %>%
+  mutate(old_removed_frac = old_removed_t / (SSB + catch_total_t))
+```
+
+---
+
+## 4  Climate indices
+
+Local SST is the annual mean of the two Strait of Georgia lighthouse stations (Entrance
+Island and Chrome Island). Sentinel values > 20 °C are treated as missing. The 2020 record
+is missing all summer months (survey gap) and is therefore biased cold; it is replaced by
+the mean of the six surrounding years. ONI and PDO are annual means of the published
+monthly series.
+
+```{r climate}
+sst_raw <- read_csv(F_SST, guess_max = 10000, show_col_types = FALSE)
+mean_SST_ts <- sst_raw %>%
+  pivot_longer(JAN:DEC, names_to = "month", values_to = "sst") %>%
+  mutate(sst = if_else(sst > 20, NA_real_, sst)) %>%
+  filter(Station %in% c("Entrance_Island","Chrome_Island")) %>%
+  group_by(Station, YEAR, month) %>% summarise(m = mean(sst, na.rm = TRUE), .groups = "drop") %>%
+  group_by(Year = YEAR) %>% summarise(mean_SST = mean(m, na.rm = TRUE), .groups = "drop") %>%
+  filter(Year != 2025)
+
+sst_2020_fix <- mean_SST_ts %>% filter(Year %in% c(2017,2018,2019,2021,2022,2023)) %>%
+  summarise(m = mean(mean_SST, na.rm = TRUE)) %>% pull(m)
+mean_SST_ts <- mean_SST_ts %>%
+  mutate(mean_SST = if_else(Year == 2020, sst_2020_fix, mean_SST))
+
+oni <- read_csv(F_ONI, show_col_types = FALSE) %>%
+  pivot_longer(-Year, names_to = "month", values_to = "ONI") %>%
+  group_by(Year) %>% summarise(ONI_ann = mean(ONI, na.rm = TRUE), .groups = "drop")
+
+pdo <- read_csv(F_PDO, show_col_types = FALSE) %>%
+  pivot_longer(-Year, names_to = "month", values_to = "PDO") %>%
+  group_by(Year) %>% summarise(mean_PDO = mean(PDO, na.rm = TRUE), .groups = "drop")
+
+cat(sprintf("2020 SST replaced by %.2f C (mean of 2017-19, 2021-23)\n", sst_2020_fix))
+```
+
+---
+
+## 5  Landed value, deflated to constant 2024 CAD
+
+```{r value}
+val_raw <- read_excel(F_VALUE, sheet = 1)
+value_ton <- val_raw %>%
+  mutate(Year = suppressWarnings(as.numeric(Year)),
+         vpt  = suppressWarnings(as.numeric(value_per_ton_real2024))) %>%
+  filter(!is.na(Year)) %>%
+  group_by(Year) %>% summarise(value_per_ton = mean(vpt, na.rm = TRUE), .groups = "drop") %>%
+  mutate(value_per_ton = ifelse(is.nan(value_per_ton), NA_real_, value_per_ton))
+
+cat(sprintf("Real value per tonne: %d years with data (%d-%d); peak %s CAD in %d\n",
+            sum(!is.na(value_ton$value_per_ton)),
+            min(value_ton$Year[!is.na(value_ton$value_per_ton)]),
+            max(value_ton$Year[!is.na(value_ton$value_per_ton)]),
+            format(round(max(value_ton$value_per_ton, na.rm = TRUE)), big.mark = ","),
+            value_ton$Year[which.max(value_ton$value_per_ton)]))
+```
+
+---
+
+## 6  The annual model frame
+
+```{r annual}
+annual <- occ %>%
+  left_join(SSB,          by = "Year") %>%
+  left_join(prop_old %>% select(Year, prop_old_wt, prop_old_n, n_samples, n_aged,
+                                fishery_source), by = "Year") %>%
+  left_join(old_removed %>% select(Year, catch_total_t, old_removed_t, old_removed_frac),
+            by = "Year") %>%
+  left_join(mean_SST_ts,  by = "Year") %>%
+  left_join(oni,          by = "Year") %>%
+  left_join(pdo,          by = "Year") %>%
+  left_join(value_ton,    by = "Year") %>%
+  filter(Year %in% YRS) %>%
+  mutate(logit_occ = qlogis(pmin(pmax(occupancy, 0.001), 0.999)),
+         phase     = if_else(Year < BREAK_YEAR, "Pre-collapse", "Post-collapse"),
+         era       = case_when(Year <= 1966      ~ "Reduction (1951-1966)",
+                               Year %in% 1968:1971 ~ "Moratorium (1968-1971)",
+                               Year >= 1972      ~ "Roe gillnet (1972+)",
+                               TRUE              ~ "Collapse (1967)"))
+
+write_csv(annual, file.path(DERIVED, "annual_series.csv"))
+
+cat(sprintf("annual_series.csv: %d years (%d-%d); complete cases for the driver models: %d\n",
+            nrow(annual), min(annual$Year), max(annual$Year),
+            sum(complete.cases(annual %>% select(occupancy, prop_old_wt, mean_SST,
+                                                 ONI_ann, mean_PDO)))))
+```
+
+---
+
+## 7  Site-level occupancy dataset (areas 13, 14, 15, 17, 18)
+
+The analysis window is 1975–2024, the period covered by test-fishery biosamples. A **known
+site** is any location code recorded in that window; the site universe is therefore the one
+relevant to the analysis, not to the full 1951–2024 series. A site is coded occupied (1) in
+a year if spawn was recorded there, and 0 if its statistical area was surveyed that year but
+the site was not recorded. An area-year counts as surveyed if at least one site in that area
+was recorded. Sites are **not** coded absent in years without area-level survey coverage, so
+incomplete survey effort is never read as true absence.
+
+```{r site-level}
+SITE_YEARS <- 1975:2024
+
+spawn_site <- spawn_all %>% filter(StatisticalArea %in% BIO_AREAS, Year %in% SITE_YEARS)
+
+known_sites <- spawn_site %>%
+  distinct(StatisticalArea, LocationCode, LocationName)
+
+## an area-year is "surveyed" if at least one site in that area was recorded
+surveyed_yrs <- spawn_site %>%
+  group_by(StatisticalArea, Year) %>%
+  summarise(n_sites_recorded = n_distinct(LocationCode), .groups = "drop") %>%
+  filter(n_sites_recorded >= 1)
+
+recorded <- spawn_site %>%
+  distinct(StatisticalArea, LocationCode, Year) %>% mutate(occupied = 1L)
+
+site_grid <- known_sites %>%
+  inner_join(surveyed_yrs %>% select(StatisticalArea, Year),
+             by = "StatisticalArea", relationship = "many-to-many") %>%
+  left_join(recorded, by = c("StatisticalArea","LocationCode","Year")) %>%
+  mutate(occupied = replace_na(occupied, 0L))
+
+cat(sprintf("Occupancy matrix before predictors: %s site-years at %d sites (%.1f%% occupied)\n",
+            format(nrow(site_grid), big.mark = ","),
+            n_distinct(site_grid$LocationCode), 100*mean(site_grid$occupied)))
+
+## predictors: area-year test-fishery prop_old, plus annual climate.
+## The inner join drops area-years without an adequate biological sample.
+site_occ <- site_grid %>%
+  inner_join(test_age_area %>% select(Year, stat_area, prop_old),
+             by = c("Year", "StatisticalArea" = "stat_area")) %>%
+  left_join(mean_SST_ts, by = "Year") %>%
+  left_join(oni,         by = "Year") %>%
+  mutate(area_str   = factor(StatisticalArea),
+         prop_old_s = as.numeric(scale(prop_old)),
+         SST_s      = as.numeric(scale(mean_SST)),
+         ONI_s      = as.numeric(scale(ONI_ann)))
+
+cat(sprintf("Site-level dataset: %s site-years at %d sites, %d-%d\n",
+            format(nrow(site_occ), big.mark = ","),
+            n_distinct(site_occ$LocationCode),
+            min(site_occ$Year), max(site_occ$Year)))
+write_csv(site_occ, file.path(DERIVED, "site_occupancy_dataset.csv"))
+```
+
+---
+
+## 8  Historical exploitation rate by statistical area (1951–1983)
+
+Exploitation rate is total catch divided by total pre-fishery biomass (catch + spawn index)
+over 1951–1983, spanning the reduction era, the closure, and the early roe fishery. It is a
+time-invariant, area-level predictor used in the site-loss model in `06`.
+
+```{r exploitation}
+catch2 <- read_csv(F_CATCH2, show_col_types = FALSE) %>%
+  mutate(area    = suppressWarnings(as.integer(as.numeric(Statistical.Area))),
+         catch_t = suppressWarnings(as.numeric(Sum.of.Catch.metric.tons)))
+
+spawn_pre <- spawn_all %>% filter(StatisticalArea %in% BIO_AREAS, Year %in% 1951:1983) %>%
+  group_by(StatisticalArea) %>% summarise(spawn_t = sum(spawn_bio, na.rm = TRUE), .groups = "drop")
+catch_pre <- catch2 %>% filter(area %in% BIO_AREAS, New_Year %in% 1951:1983) %>%
+  group_by(StatisticalArea = area) %>% summarise(catch_t = sum(catch_t, na.rm = TRUE), .groups = "drop")
+
+area_exploit <- catch_pre %>% inner_join(spawn_pre, by = "StatisticalArea") %>%
+  mutate(exploit   = catch_t / (catch_t + spawn_t),
+         exploit_s = as.numeric(scale(exploit)))
+
+area_exploit %>% mutate(across(where(is.numeric), ~round(., 3))) %>% print()
+write_csv(area_exploit, file.path(DERIVED, "area_exploitation.csv"))
+```
+
+---
+
+## Session information
+
+```{r session}
+sessionInfo()
+```

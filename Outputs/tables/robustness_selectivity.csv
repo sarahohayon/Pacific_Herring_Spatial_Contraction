@@ -1,0 +1,11 @@
+Variant,Label,n,edf,F,P,adj. R2
+Age threshold,age >= 4,67,1,20.6,2.66e-5,0.581
+Age threshold,age >= 5,67,2.21,12.2,2.31e-5,0.606
+Age threshold,age >= 6,67,2.98,10.3,1.68e-5,0.622
+Age threshold,age >= 7,67,3.27,11.31,5.04e-6,0.637
+Fishery breadth,Roe gillnet,67,2.21,12.2,2.31e-5,0.606
+Fishery breadth,Full roe fishery,67,2.53,10.81,5.27e-5,0.606
+Fishery breadth,All fisheries,68,1.49,8.03,0.00165,0.527
+Selectivity metric,By weight,67,2.21,12.2,2.31e-5,0.606
+Selectivity metric,By count,67,2.15,11.89,3.12e-5,0.6
+Survey period,Surface surveys only (<= 1984),28,1.25,5.3,0.0176,0.319

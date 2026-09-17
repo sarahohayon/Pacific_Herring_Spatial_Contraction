@@ -1,0 +1,4 @@
+Presence rule,Sections,supF,Break (95% CI),Occupancy pre (%),Occupancy post (%),"Occupancy post, matched SSB (%)",SSB P,Phase P,prop_old alone: F,prop_old alone: P,prop_old alone: adj. R2,prop_old + SST: adj. R2,prop_old + SST: SST P,"dAIC, prop_old + SST vs prop_old alone","dAIC, null vs prop_old alone"
+Surveyed spawn records (main analysis),19,187,after 1978 (1977-1980),66,33,33,0.32,4.8e-18,13.82,6.6e-6,0.54,0.61,0.047,-1.3,11.6
+Spawn biomass > 0 only,18,208,after 1982 (1981-1984),68,34,33,0.4,5.9e-20,13.55,7.4e-6,0.53,0.61,0.02,-3,11.4
+All spawn records,19,117,after 1977 (1975-1979),66,39,38,0.68,1e-12,12.95,1.5e-5,0.47,0.5,0.28,2,11.3

@@ -1,0 +1,8 @@
+Surface-era scaling k,Mean pre-collapse SSB (kt),Mean post-collapse SSB (kt),Post/pre biomass ratio,SSB P,Phase P,Occupancy pre (%),"Occupancy post, matched SSB (%)",n matched post-collapse years
+1,49,75,1.53,0.32,4.8e-18,66,33,35
+1.25,61,76,1.24,0.19,9.6e-20,66,33,40
+1.5,73,76,1.04,0.12,9.3e-21,66,33,41
+1.53,75,77,1.02,0.12,7.7e-21,66,33,41
+2,98,78,0.8,0.063,3.3e-21,66,33,41
+2.5,122,80,0.65,0.041,8.3e-21,66,33,41
+3,147,81,0.55,0.031,2.7e-20,66,33,41

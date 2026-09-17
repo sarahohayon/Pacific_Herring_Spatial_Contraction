@@ -1,0 +1,521 @@
+---
+title: "06 — Peripheral collapse and the Area 14 refuge"
+subtitle: "Results 2.4: per-area change, historical exploitation and permanent site loss, site-level occupancy models"
+author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      dpi = 150, fig.align = "center")
+source("00_setup.R")
+library(lme4); library(knitr); library(patchwork); library(scales); library(sf)
+```
+
+```{r load}
+site_year <- read_csv(file.path(DERIVED, "site_year_spawn.csv"),        show_col_types = FALSE)
+site_all  <- read_csv(file.path(DERIVED, "site_year_spawn_all.csv"),    show_col_types = FALSE)
+site_occ  <- read_csv(file.path(DERIVED, "site_occupancy_dataset.csv"), show_col_types = FALSE)
+area_expl <- read_csv(file.path(DERIVED, "area_exploitation.csv"),      show_col_types = FALSE)
+
+PRE_YEARS    <- 1951:1983
+RECENT_YEARS <- 2013:2024
+```
+
+---
+
+## 1  Change in occupied sites and spawning biomass by management area
+
+Per-area change compares the **mean annual** number of occupied sites and the **mean annual**
+spawn biomass in the pre-collapse era with the same quantities in recent years. Means rather
+than totals, so that the unequal length of the two windows does not itself create a change.
+
+```{r area-change}
+window_values <- function(y0, y1) {
+  site_year %>% filter(Year >= y0, Year <= y1) %>%
+    group_by(StatisticalArea, Year) %>%
+    summarise(n_sites = n(), biomass = sum(spawn_bio_sum), .groups = "drop") %>%   # n() = recorded sites
+    group_by(StatisticalArea) %>%
+    summarise(sites = mean(n_sites), biomass = mean(biomass), .groups = "drop")
+}
+
+chg <- window_values(min(PRE_YEARS), max(PRE_YEARS)) %>%
+  rename(sites_pre = sites, biomass_pre = biomass) %>%
+  inner_join(window_values(min(RECENT_YEARS), max(RECENT_YEARS)) %>%
+               rename(sites_recent = sites, biomass_recent = biomass),
+             by = "StatisticalArea") %>%
+  filter(sites_pre > 0, biomass_pre > 0) %>%
+  mutate(`Sites change (%)`   = 100*(sites_recent - sites_pre)/sites_pre,
+         `Biomass change (%)` = 100*(biomass_recent - biomass_pre)/biomass_pre) %>%
+  arrange(`Sites change (%)`)
+
+save_tab(chg %>% mutate(across(where(is.numeric), ~round(., 1))), "per_area_change")
+kable(chg %>% mutate(across(where(is.numeric), ~round(., 1))),
+      caption = sprintf("Change in mean annual occupied sites and spawn biomass, %d-%d versus %d-%d",
+                        min(PRE_YEARS), max(PRE_YEARS), min(RECENT_YEARS), max(RECENT_YEARS)))
+
+for (a in chg$StatisticalArea)
+  cat(sprintf("Area %2d: sites %+.0f%%, biomass %+.0f%%\n", a,
+              chg$`Sites change (%)`[chg$StatisticalArea == a],
+              chg$`Biomass change (%)`[chg$StatisticalArea == a]))
+```
+
+---
+
+## 2  Historical exploitation predicts permanent site loss
+
+Sites occupied in at least two years before the collapse are classified as **persistent** if
+recorded at least once during 2013–2024, or **collapsed** if absent throughout. Historical
+exploitation rate is an area-level, time-invariant predictor: total catch divided by total
+pre-fishery biomass (catch + spawn index) over 1951–1983.
+
+A site counts as occupied in a year if spawn was **recorded** there, the same definition used
+by the site-level occupancy models in Section 3. Using recorded presence rather than a
+positive biomass value keeps the two analyses on one definition, and it is the conservative
+choice here: it treats records for which DFO gives no biomass estimate as observed spawning
+rather than as loss. Section occupancy (chapter 01) uses the same rule.
+
+```{r site-loss}
+hist_sites <- site_all %>%
+  filter(StatisticalArea %in% BIO_AREAS, Year %in% PRE_YEARS) %>%
+  group_by(StatisticalArea, LocationCode) %>%
+  summarise(yrs_active_pre = n_distinct(Year), .groups = "drop") %>%
+  filter(yrs_active_pre >= 2)
+
+seen_recent <- site_all %>%
+  filter(StatisticalArea %in% BIO_AREAS, Year %in% RECENT_YEARS) %>%
+  distinct(StatisticalArea, LocationCode) %>% mutate(persistent = TRUE)
+
+cd <- hist_sites %>%
+  left_join(seen_recent, by = c("StatisticalArea","LocationCode")) %>%
+  mutate(collapsed = as.integer(is.na(persistent))) %>%
+  inner_join(area_expl, by = "StatisticalArea")
+
+cat(sprintf("Of %d sites occupied in >= 2 years before the collapse, %d (%.0f%%) were no longer occupied during %d-%d\n",
+            nrow(cd), sum(cd$collapsed), 100*mean(cd$collapsed),
+            min(RECENT_YEARS), max(RECENT_YEARS)))
+
+m_expl <- glm(collapsed ~ exploit_s, data = cd, family = binomial)
+OR  <- exp(coef(m_expl)[2]); p_or <- summary(m_expl)$coefficients[2, 4]
+cat(sprintf("\nOdds of site loss per SD of historical exploitation: OR = %.2f, P %s\n",
+            OR, fmt_p(p_or)))
+
+## control for historically marginal sites
+m_expl2 <- glm(collapsed ~ exploit_s + scale(yrs_active_pre), data = cd, family = binomial)
+OR2 <- exp(coef(m_expl2)[2]); p_or2 <- summary(m_expl2)$coefficients[2, 4]
+cat(sprintf("Controlling for pre-collapse longevity: OR = %.2f, P %s (longevity itself: OR = %.2f, P %s)\n",
+            OR2, fmt_p(p_or2), exp(coef(m_expl2)[3]),
+            fmt_p(summary(m_expl2)$coefficients[3, 4])))
+print(round(summary(m_expl2)$coefficients, 4))
+
+## assumption-free area-level check
+area_loss <- cd %>% group_by(StatisticalArea) %>%
+  summarise(exploit = first(exploit), pct_lost = 100*mean(collapsed),
+            n_sites = n(), .groups = "drop")
+rho <- suppressWarnings(cor.test(area_loss$exploit, area_loss$pct_lost,
+                                 method = "spearman", exact = FALSE))
+cat(sprintf("\nArea-level Spearman rho = %.2f (P %s, %d areas)\n",
+            rho$estimate, fmt_p(rho$p.value), nrow(area_loss)))
+save_tab(area_loss %>% mutate(across(where(is.numeric), ~round(., 3))), "area_site_loss")
+kable(area_loss %>% mutate(across(where(is.numeric), ~round(., 3))),
+      caption = "Historical exploitation rate and proportion of historical spawning sites lost, by area")
+```
+
+---
+
+## 3  Old fish and site occupancy: refuge versus periphery
+
+Across the 1975–2024 window covered by test-fishery biosamples, the probability that a known
+site is occupied is modelled as a function of the proportion of old fish in that area-year.
+Site identity is a random intercept; **area × year** is a crossed random intercept, which is
+necessary because occupancy and age structure share a common temporal trend within the
+refuge that a single shared year effect could not remove.
+
+```{r glmm}
+d <- site_occ %>%
+  mutate(site   = factor(paste(StatisticalArea, LocationCode, sep = "_")),
+         Year_f = factor(Year),
+         area_str = factor(StatisticalArea),
+         at2    = factor(if_else(StatisticalArea == 14, "refuge", "periphery"),
+                         levels = c("periphery","refuge")))
+
+cat(sprintf("%s site-years at %d sites in %d areas, %d-%d\n",
+            format(nrow(d), big.mark = ","), n_distinct(d$site), n_distinct(d$area_str),
+            min(d$Year), max(d$Year)))
+
+m_int <- glmer(occupied ~ prop_old_s * at2 + SST_s + ONI_s + (1|site) + (1|area_str:Year_f),
+               data = d, family = binomial,
+               control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5)))
+m_add <- glmer(occupied ~ prop_old_s + at2 + SST_s + ONI_s + (1|site) + (1|area_str:Year_f),
+               data = d, family = binomial,
+               control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5)))
+
+print(round(summary(m_int)$coefficients, 4))
+lrt <- anova(m_add, m_int)
+p_int <- summary(m_int)$coefficients["prop_old_s:at2refuge", "Pr(>|z|)"]
+cat(sprintf("\nInteraction prop_old x area type: P %s (LRT chi2 = %.2f, df = %d, P %s; dAIC = %.1f)\n",
+            fmt_p(p_int), lrt$Chisq[2], lrt$Df[2], fmt_p(lrt$`Pr(>Chisq)`[2]),
+            AIC(m_add) - AIC(m_int)))
+
+b <- fixef(m_int)
+cat(sprintf("Slope of prop_old on logit P(occupied): periphery %+.2f | refuge (Area 14) %+.2f\n",
+            b["prop_old_s"], b["prop_old_s"] + b["prop_old_s:at2refuge"]))
+```
+
+### Per-area models
+
+The refuge–periphery contrast is not imposed by the classification: each area is modelled
+independently, with year as a crossed random intercept.
+
+```{r per-area}
+per_area <- map_dfr(sort(unique(as.character(d$area_str))), function(a) {
+  da <- d %>% filter(area_str == a)
+  m  <- tryCatch(glmer(occupied ~ prop_old_s + SST_s + ONI_s + (1|site) + (1|Year_f),
+                       data = da, family = binomial,
+                       control = glmerControl(optimizer = "bobyqa",
+                                              optCtrl = list(maxfun = 2e5))),
+                 error = function(e) NULL)
+  if (is.null(m)) return(NULL)
+  cf <- summary(m)$coefficients
+  tibble(Area = a, `site-years` = nrow(da), sites = n_distinct(da$site),
+         `beta prop_old` = round(cf["prop_old_s","Estimate"], 3),
+         SE = round(cf["prop_old_s","Std. Error"], 3),
+         z  = round(cf["prop_old_s","z value"], 2),
+         P  = signif(cf["prop_old_s","Pr(>|z|)"], 3))
+})
+save_tab(per_area, "per_area_site_occupancy_models")
+kable(per_area, caption = "Per-area site-occupancy models: effect of the proportion of old fish")
+```
+
+### Marginal predictions
+
+Fitted curves are population-averaged, integrated over the random-effect distribution, so
+they are directly comparable with observed proportions.
+
+```{r marginal, fig.width=8, fig.height=5}
+gr <- map_dfr(c("periphery","refuge"), function(a) {
+  s <- d %>% filter(at2 == a)
+  tibble(prop_old_s = seq(min(s$prop_old_s), max(s$prop_old_s), length.out = 100),
+         at2 = a, SST_s = 0, ONI_s = 0)
+}) %>% mutate(at2 = factor(at2, levels = c("periphery","refuge")))
+
+mm  <- model.matrix(~ prop_old_s * at2 + SST_s + ONI_s, gr)
+eta <- as.numeric(mm %*% fixef(m_int))
+se  <- sqrt(rowSums((mm %*% as.matrix(vcov(m_int))) * mm))
+
+vc     <- as.data.frame(VarCorr(m_int))
+sigRE  <- sqrt(sum(vc$vcov))
+set.seed(1); rd <- rnorm(4000, 0, sigRE)
+marg   <- function(e) mean(plogis(e + rd))
+
+gr <- gr %>% mutate(prop_old = prop_old_s * sd(d$prop_old) + mean(d$prop_old),
+                    fit = sapply(eta, marg),
+                    lo  = sapply(eta - 1.96*se, marg),
+                    hi  = sapply(eta + 1.96*se, marg),
+                    curve = if_else(at2 == "refuge", "Refuge (14)",
+                                    "Periphery (13, 15, 17, 18)"))
+
+bins <- d %>% mutate(b = cut(prop_old, breaks = seq(0, 0.65, 0.05), include.lowest = TRUE)) %>%
+  group_by(area_str, b) %>%
+  summarise(prop_old = mean(prop_old), P = mean(occupied), n = n(), .groups = "drop") %>%
+  filter(n >= 8)
+
+curve_cols <- c("Periphery (13, 15, 17, 18)" = "grey25", "Refuge (14)" = "#E07B3F")
+
+## Shared look for the four Figure 4 panels: same scale of type as Figures 1-2,
+## with more clearance between each axis and its title than theme_science gives.
+theme_fig4 <- theme_science +
+  theme(plot.title   = element_text(size = 21, face = "bold",
+                                    margin = margin(b = 14)),
+        axis.title.x = element_text(size = 26, margin = margin(t = 14)),
+        axis.title.y = element_text(size = 26, margin = margin(r = 14)),
+        axis.text    = element_text(size = 25, colour = "black"),
+        legend.text  = element_text(size = 17),
+        legend.title = element_text(size = 17),
+        legend.key   = element_blank(),
+        legend.background = element_rect(fill = alpha("white", 0.7), colour = NA))
+
+p_occ <- ggplot() +
+  geom_ribbon(data = gr, aes(prop_old, ymin = lo, ymax = hi, fill = curve), alpha = 0.15) +
+  geom_point(data = bins, aes(prop_old, P, size = n, fill = area_str),
+             shape = 21, colour = "white", stroke = 0.4, alpha = 0.9) +
+  geom_line(data = gr, aes(prop_old, fit, colour = curve), linewidth = 1.4) +
+  scale_fill_manual(values = c(area_cols, curve_cols), guide = "none") +
+  scale_colour_manual(values = curve_cols, name = NULL) +
+  ## the bins are counts of site-years, so the size key says so
+  scale_size_area(name = "Site-years", max_size = 9, breaks = c(50, 200, 500)) +
+  ## top-left: the size key holds the bottom-right corner
+  annotate("text", x = -Inf, y = Inf, hjust = -0.07, vjust = 1.6, size = 7,
+           fontface = "bold", label = sprintf("Interaction P %s", fmt_p(p_int))) +
+  coord_cartesian(ylim = c(0, 0.5)) +
+  labs(x = "Proportion of old fish (age ≥ 5)", y = "P(site occupied)",
+       title = "Effect of old fish on site occupancy") +
+  theme_fig4 +
+  theme(legend.position = c(0.99, 0.01), legend.justification = c(1, 0),
+        legend.box = "vertical", legend.box.just = "right",
+        ## points sit in this corner too, so the key needs a solid ground
+        legend.background = element_rect(fill = alpha("white", 0.93), colour = NA),
+        legend.text  = element_text(size = 21),
+        legend.title = element_text(size = 21),
+        legend.key.size = unit(1.1, "cm"),
+        legend.spacing.y = unit(2, "pt")) +
+  guides(colour = guide_legend(order = 1, position = "top",
+                               override.aes = list(linewidth = 2.2)),
+         ## stacked, not horizontal: a row of three keys is wide enough to sit
+         ## over the refuge confidence band
+         size   = guide_legend(order = 2, title.position = "top",
+                               override.aes = list(fill = "grey60", colour = "white")))
+save_fig(p_occ, "Fig4d_site_occupancy_refuge_periphery", width = 10, height = 8)
+p_occ
+```
+
+---
+
+## 4  Figure 4 — panels a-c
+
+Panel **d** is built in Section 3 above. The three remaining panels are assembled here from
+`site_year` (a), `chg` (b) and `cd` / `area_loss` (c), so the figure and the statistics come
+from the same objects.
+
+```{r fig4-panels, fig.width=15, fig.height=9.5}
+## ---- a  Spawning sites, pre-collapse versus recent --------------------------
+PERIOD_LEVELS <- c(sprintf("Pre-collapse (≤%d)", max(PRE_YEARS)),
+                   sprintf("Recent (%d-%d)", min(RECENT_YEARS), max(RECENT_YEARS)))
+
+## Bubbles are mean ANNUAL spawn: each site's total over the window divided by the
+## length of the window, so years without spawn count as zeros. Dividing instead by
+## the number of years a site actually spawned - which is what a plain mean() does,
+## since site_year has no rows for empty years - makes a site that spawned once in
+## twelve years draw the same bubble as one that spawns every year. In the recent
+## window 37% of peripheral sites spawned in a single year, so that version showed a
+## larger median peripheral bubble now (410 t) than before the collapse (204 t), the
+## opposite of the truth: the periphery fell from 46% of annual spawn to 12%.
+## A site is mapped only if it was in regular use within the period: at least 2 spawn years
+## inside some 5-year window. Without this, a site that spawned once in twelve years draws the
+## same kind of dot as one used every year, which overstates how much of the periphery is still
+## in use. Biomass is unaffected (the rule drops only sparsely used sites, which carry little).
+in_regular_use <- function(years, win_years, min_yrs = 2, win = 5) {
+  ys <- sort(unique(years))
+  if (!length(ys)) return(FALSE)
+  starts <- min(win_years):(max(win_years) - win + 1)
+  any(vapply(starts, function(st) sum(ys >= st & ys <= st + win - 1) >= min_yrs, logical(1)))
+}
+
+map_sites <- site_year %>%
+  filter(!is.na(Longitude), !is.na(Latitude)) %>%
+  mutate(period = case_when(Year %in% PRE_YEARS    ~ PERIOD_LEVELS[1],
+                            Year %in% RECENT_YEARS ~ PERIOD_LEVELS[2],
+                            TRUE ~ NA_character_)) %>%
+  filter(!is.na(period)) %>%
+  group_by(period, StatisticalArea, LocationCode, Longitude, Latitude) %>%
+  summarise(total_bio = sum(spawn_bio), n_yrs_spawned = n_distinct(Year),
+            regular = in_regular_use(Year, if (period[1] == PERIOD_LEVELS[1]) PRE_YEARS else RECENT_YEARS),
+            .groups = "drop") %>%
+  filter(regular) %>%
+  mutate(window_yrs = if_else(period == PERIOD_LEVELS[1],
+                              length(PRE_YEARS), length(RECENT_YEARS)),
+         mean_bio   = total_bio / window_yrs,
+         period     = factor(period, levels = PERIOD_LEVELS),
+         area_f     = factor(as.character(StatisticalArea), levels = names(area_cols)))
+
+map_sites %>% group_by(period) %>%
+  summarise(sites = n(), annual_t = round(sum(mean_bio)),
+            periphery_pct = round(100*sum(mean_bio[StatisticalArea != 14])/sum(mean_bio), 1),
+            .groups = "drop") %>% print()
+
+coast <- tryCatch(
+  rnaturalearth::ne_countries(scale = "large", returnclass = "sf"),
+  error = function(e) rnaturalearth::ne_countries(scale = "medium", returnclass = "sf"))
+
+## Management-area outlines, dissolved from the DFO section polygons. StatArea is
+## a zero-padded character field in the shapefile, hence the numeric coercion.
+## Sections 161-165 do not share exact edges, so dissolving Area 16 leaves a sliver gap that
+## survives as an interior ring and is drawn as a line across the area. No management area has
+## a real hole, so keep exterior rings only.
+drop_holes <- function(g) {
+  if (inherits(g, "MULTIPOLYGON")) st_multipolygon(lapply(g, function(pp) pp[1]))
+  else st_polygon(g[1])
+}
+
+areas_sf <- tryCatch({
+  x <- st_read(F_SECT, quiet = TRUE) %>%
+    st_make_valid() %>%
+    mutate(StatisticalArea = suppressWarnings(as.numeric(StatArea))) %>%
+    filter(StatisticalArea %in% OCC_AREAS) %>%
+    group_by(StatisticalArea) %>% summarise(.groups = "drop") %>%
+    st_make_valid()
+  st_geometry(x) <- st_sfc(lapply(st_geometry(x), drop_holes), crs = st_crs(x))
+  x %>%
+    st_transform(4326) %>%
+    mutate(area_f = factor(as.character(StatisticalArea), levels = names(area_cols)))
+}, error = function(e) NULL)
+
+## Fixed map frame (the Aug 2026 extent), so that all nine management areas stay in view after
+## non-SoG spawn records were excluded; a data-driven frame would crop Areas 13, 28 and 29.
+xlim_m <- c(-126.10, -122.60)
+ylim_m <- c(48.18, 51.03)
+
+p4a <- ggplot() +
+  geom_sf(data = coast, fill = "grey88", colour = "grey60", linewidth = 0.3) +
+  {if (!is.null(areas_sf))
+     geom_sf(data = areas_sf, aes(colour = area_f), fill = NA, linewidth = 0.7)} +
+  geom_point(data = map_sites,
+             aes(Longitude, Latitude, size = mean_bio, colour = area_f), alpha = 0.75) +
+  scale_size_area(name = "Mean annual spawn (t)", max_size = 9,
+                  breaks = c(1000, 4000, 8000),
+                  labels = label_number(big.mark = ",")) +
+  scale_colour_manual(values = area_cols, name = "Management area") +
+  scale_x_continuous(breaks = seq(-126, -123, by = 1)) +
+  coord_sf(xlim = xlim_m, ylim = ylim_m, expand = FALSE) +
+  facet_wrap(~ period, nrow = 1, axes = "all") +
+  labs(x = NULL, y = NULL, title = "Spatial collapse of spawning from periphery to core refuge") +
+  theme_fig4 +
+  theme(strip.background = element_blank(),
+        strip.text       = element_text(size = 27),
+        panel.spacing.x  = unit(10, "lines"),            # clear gap between the two maps
+        ## water tinted so the coastline reads as land against sea
+        panel.background = element_rect(fill = "#EAF3F8", colour = NA),
+        panel.border     = element_rect(fill = NA, colour = "grey40"),
+        ## only the size key is kept, inside the recent map where the frame is empty;
+        ## areas are identified by their coloured outlines, so that key is redundant
+        legend.position  = c(0.965, 0.955), legend.justification = c(1, 1),
+        legend.text      = element_text(size = 19),
+        legend.title     = element_text(size = 19),
+        legend.margin    = margin(0, 0, 0, 0),
+        legend.background = element_blank(), legend.key = element_blank()) +
+  guides(colour = "none", size = guide_legend(ncol = 1))
+
+## ---- b  Percent change in sites and biomass, by area ------------------------
+chg_long <- chg %>%
+  transmute(area_f = factor(as.character(StatisticalArea), levels = names(area_cols)),
+            Sites = `Sites change (%)`, Biomass = `Biomass change (%)`) %>%
+  pivot_longer(c(Sites, Biomass), names_to = "metric", values_to = "pct") %>%
+  mutate(metric = factor(metric, levels = c("Sites", "Biomass")),
+         ## Area 28 has no pre-collapse spawn so it is filtered out of `chg`,
+         ## but the factor level survives and draws an empty labelled row
+         area_f = fct_drop(fct_reorder(area_f, pct, .fun = min)))
+
+p4b <- ggplot(chg_long, aes(pct, area_f, fill = area_f, alpha = metric)) +
+  geom_col(position = position_dodge(width = 0.75), width = 0.7) +
+  geom_vline(xintercept = 0, colour = "grey25", linewidth = 0.6) +
+  ## Value at the end of each bar, pushed outward so it never sits on the bar.
+  ## group = metric is required: geom_col groups by interaction(area_f, metric)
+  ## via its fill and alpha aesthetics, but geom_text has neither, so without an
+  ## explicit group the two labels of a pair collapse onto the same line.
+  geom_text(aes(label = sprintf("%+.0f%%", pct), group = metric,
+                hjust = if_else(pct >= 0, -0.18, 1.18)),
+            position = position_dodge(width = 0.75),
+            size = 9, alpha = 1, colour = "grey20", show.legend = FALSE) +
+  scale_fill_manual(values = area_cols, guide = "none") +
+  scale_alpha_manual(values = c(Sites = 1, Biomass = 0.45), name = NULL,
+                     breaks = c("Biomass", "Sites"),
+                     labels = c("Biomass", "Occupied sites")) +
+  ## room on both sides for the labels
+  scale_x_continuous(labels = label_number(suffix = "%"),
+                     expand = expansion(mult = c(0.26, 0.30))) +
+  scale_y_discrete(labels = function(x) paste("Area", x)) +
+  labs(x = "Change from pre-collapse to recent", y = "Management\narea",
+       title = "Change in biomass and number of spawning sites") +
+  theme_fig4 +
+  ## the y title reads as a column heading above the topmost area, not rotated beside it
+  theme(axis.title.y = element_text(angle = 0, hjust = 1, vjust = 1.02, size = 22,
+                                    margin = margin(r = -58, l = 0)),
+        plot.margin  = margin(t = 16, r = 40, b = 6, l = 2),
+        legend.text  = element_text(size = 21),
+        legend.key.size = unit(1.1, "cm"),
+        legend.position = c(0.80, 0.02), legend.justification = c(1, 0)) +
+  ## one column, Biomass above Occupied sites, so the key is tall not wide
+  guides(alpha = guide_legend(ncol = 1, reverse = FALSE,
+                              override.aes = list(fill = "grey35")))
+
+## ---- c  Site loss against historical exploitation ---------------------------
+## The fitted line is the site-level logistic model; the points are areas. The
+## grid is built on the standardised predictor the model uses, then mapped back
+## to the raw exploitation rate for the axis via the exact linear relation.
+back_tf   <- lm(exploit ~ exploit_s, data = cd)
+expl_grid <- tibble(exploit_s = seq(min(cd$exploit_s), max(cd$exploit_s), length.out = 200))
+pr        <- predict(m_expl, newdata = expl_grid, se.fit = TRUE, type = "link")
+expl_grid <- expl_grid %>%
+  mutate(exploit = predict(back_tf, expl_grid),
+         fit = plogis(pr$fit),
+         lo  = plogis(pr$fit - 1.96*pr$se.fit),
+         hi  = plogis(pr$fit + 1.96*pr$se.fit))
+
+area_loss_p <- area_loss %>%
+  mutate(area_f = factor(as.character(StatisticalArea), levels = names(area_cols)),
+         prop_lost = pct_lost/100)
+
+p4c <- ggplot() +
+  geom_ribbon(data = expl_grid, aes(exploit, ymin = lo, ymax = hi),
+              fill = "grey70", alpha = 0.30) +
+  geom_line(data = expl_grid, aes(exploit, fit), colour = "grey15", linewidth = 1.3) +
+  geom_point(data = area_loss_p,
+             aes(exploit, prop_lost, fill = area_f, size = n_sites),
+             shape = 21, colour = "white", stroke = 0.6) +
+  ggrepel::geom_text_repel(data = area_loss_p,
+             aes(exploit, prop_lost, label = StatisticalArea),
+             size = 7.5, fontface = "bold", seed = 1,
+             box.padding = 0.8, min.segment.length = 0.2) +
+  ## model statistics, top-left: the fitted curve rises left to right, so this
+  ## corner stays clear of both the line and its confidence band
+  annotate("text", x = -Inf, y = Inf, hjust = -0.08, vjust = 1.35, size = 7,
+           lineheight = 1.15, colour = "grey15",
+           label = sprintf("OR = %.2f, P %s\nSpearman ρ = %.2f",
+                           OR, fmt_p(p_or), rho$estimate)) +
+  scale_fill_manual(values = area_cols, guide = "none") +
+  scale_size_area(name = "Historical sites", max_size = 11) +
+  scale_x_continuous(labels = percent_format(accuracy = 1),
+                     expand = expansion(mult = c(0.06, 0.08))) +
+  scale_y_continuous(labels = percent_format(accuracy = 1),
+                     expand = expansion(mult = c(0.08, 0.18))) +
+  labs(x = sprintf("Historical exploitation rate, %d-%d", min(PRE_YEARS), max(PRE_YEARS)),
+       y = "Historical spawning sites lost",
+       title = "Effect of historical exploitation on site collapse") +
+  theme_fig4 +
+  theme(legend.position = c(0.99, 0.02), legend.justification = c(1, 0),
+        legend.text  = element_text(size = 21),
+        legend.title = element_text(size = 21),
+        legend.key.size = unit(1.1, "cm")) +
+  ## the points are white-outlined and get their fill from the area palette, so
+  ## the size keys need an explicit fill or they render white on white
+  guides(size = guide_legend(override.aes = list(fill = "grey55", colour = "grey25")))
+
+save_fig(p4a, "Fig4a_spawn_sites_two_periods", width = 16, height = 9)
+save_fig(p4b, "Fig4b_percent_change_by_area",  width = 11, height = 14)
+save_fig(p4c, "Fig4c_site_loss_vs_exploitation", width = 10, height = 8)
+
+## Layout mirrors the hand-assembled version: the two maps span the top left, the
+## per-area bars run full height on the right, the two model panels sit beneath
+## the maps. Tags are supplied in panel order a, c, d, b to match that geometry.
+fig4 <- ((p4a / (p4c | p_occ)) + plot_layout(heights = c(1.3, 1)) | p4b) +
+  plot_layout(widths = c(2.1, 1)) +
+  plot_annotation(tag_levels = list(c("a","c","d","b"))) &
+  theme(plot.tag = element_text(size = 34, face = "bold"))
+
+## Type sizes are fixed in points, so the composite is kept near the size the
+## panels were tuned at; a much larger canvas would shrink all text relative to it.
+save_fig(fig4, "Figure4_spatial_collapse_to_refuge", width = 28, height = 19)
+
+## Same layout with no a/b/c/d tags: panel letters are added by hand in Inkscape.
+## Panel titles are dropped here (the caption carries them) because at composite size the
+## fixed point sizes make adjacent titles collide, and the canvas is enlarged so that the
+## facet strips, axis labels and bar labels are not clipped.
+fig4_untagged <- ((p4a / (p4c | p_occ)) + plot_layout(heights = c(1.3, 1)) | p4b) +
+  plot_layout(widths = c(2.1, 1)) & labs(title = NULL)
+save_fig(fig4_untagged, "Figure4_four_panels_untagged", width = 28, height = 19)
+fig4
+```
+
+---
+
+## Session information
+
+```{r session}
+sessionInfo()
+```

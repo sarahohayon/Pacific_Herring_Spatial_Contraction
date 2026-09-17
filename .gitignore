@@ -1,0 +1,26 @@
+# ---- Restricted DFO extracts -------------------------------------------------
+# Biosample and commercial-catch data were provided by Fisheries and Oceans Canada
+# and are available from DFO on request (see Data and materials availability).
+# Every series derived from them is published in Outputs/derived/, so scripts 02-09
+# run without these two files; only 01_data_preparation.Rmd needs them.
+Raw_data/Biosample_Strait_of_Georgia.csv
+Raw_data/SOG_herring_catch_all_fishing_types.csv
+Raw_data/SOG_herring_catch_all_fishing_types_2026_03_11.csv
+
+# ---- Manuscript files (not part of the code release) -------------------------
+*.docx
+~$*.docx
+
+# ---- Working artwork: Inkscape masters and photographs -----------------------
+# The final figures ship as PDF and PNG; the layered SVG masters (25-30 MB each)
+# and the third-party photographs in "Figure 0" are not part of the analysis.
+Figures/Main/Figure 0/
+Figures/untitled folder/
+*.svg
+
+# ---- R and macOS junk --------------------------------------------------------
+.Rhistory
+.RData
+.Rproj.user/
+.DS_Store
+Rplots.pdf

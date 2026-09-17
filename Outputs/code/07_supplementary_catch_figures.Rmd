@@ -1,0 +1,117 @@
+---
+title: "07 — Supplementary catch decompositions"
+subtitle: "Supplementary Figs. S6 and S7: commercial catch by statistical area and by gear"
+author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      dpi = 150, fig.align = "center")
+source("00_setup.R")
+library(scales); library(patchwork); library(knitr)
+```
+
+The fishery × season × gear decomposition is presented in the main text (Fig. 2a). The two
+remaining decompositions — by statistical area and by gear — are given here, as cited in
+Methods ("Catch and landed value").
+
+```{r load}
+catchdec <- read_csv(file.path(DERIVED, "catch_decomposition.csv"), show_col_types = FALSE)
+tac      <- read_csv(F_TAC, show_col_types = FALSE) %>%
+  rename_with(~ trimws(.x)) %>%
+  mutate(Year = suppressWarnings(as.numeric(New_Year)),
+         TAC_t = suppressWarnings(as.numeric(TAC_metric_tons))) %>%
+  filter(!is.na(Year)) %>% select(Year, TAC_t)
+
+cd <- catchdec %>% filter(Year %in% 1951:2025, !is.na(catch_t))
+cat(sprintf("Catch records %d-%d; total %s t\n", min(cd$Year), max(cd$Year),
+            format(round(sum(cd$catch_t, na.rm = TRUE)), big.mark = ",")))
+```
+
+---
+
+## Supplementary Figure S6 — catch by statistical area
+
+```{r figS6, fig.width=10, fig.height=5.5}
+by_area <- cd %>% filter(area %in% OCC_AREAS) %>%
+  group_by(Year, area = factor(area, levels = OCC_AREAS)) %>%
+  summarise(catch_kt = sum(catch_t, na.rm = TRUE)/1000, .groups = "drop")
+
+figS6 <- ggplot(by_area, aes(Year, catch_kt, fill = area)) +
+  band_postcoll() + band_closure() +
+  geom_area(colour = "white", linewidth = 0.15) +
+  geom_line(data = tac %>% filter(Year %in% 1951:2025),
+            aes(Year, TAC_t/1000), inherit.aes = FALSE,
+            colour = "#B22222", linewidth = 0.8) +
+  scale_fill_manual(values = area_cols, name = "Statistical\narea") +
+  scale_x_continuous(breaks = seq(1950, 2020, 10)) +
+  scale_y_continuous(name = "Catch (×1,000 t)", expand = expansion(mult = c(0, 0.04)),
+                     labels = label_number(big.mark = ",")) +
+  labs(x = NULL,
+       title = "Supplementary Figure S6. Strait of Georgia herring catch by statistical area, 1951–2025",
+       subtitle = "Red line, total allowable catch; red band, 1968–1971 closure; grey, post-collapse era") +
+  theme_herring(11)
+save_fig(figS6, "FigureS6_catch_by_statistical_area", width = 10, height = 5.5)
+figS6
+```
+
+```{r area-summary}
+by_area %>%
+  mutate(era = if_else(Year < BREAK_YEAR, "Pre-collapse", "Post-collapse")) %>%
+  group_by(area, era) %>% summarise(mean_kt = mean(catch_kt), .groups = "drop") %>%
+  pivot_wider(names_from = era, values_from = mean_kt) %>%
+  mutate(across(where(is.numeric), ~round(., 2))) %>%
+  kable(caption = "Mean annual catch (kt) by statistical area, before and after the collapse")
+```
+
+---
+
+## Supplementary Figure S7 — catch by gear
+
+```{r figS7, fig.width=10, fig.height=5.5}
+by_gear <- cd %>% filter(gear_grp != "Other") %>%
+  group_by(Year, gear_grp = factor(gear_grp, levels = c("Seine","Trawl","Gillnet"))) %>%
+  summarise(catch_kt = sum(catch_t, na.rm = TRUE)/1000, .groups = "drop")
+
+gear_cols <- c(Seine = "#8DA47E", Trawl = "#F2CC8F", Gillnet = "#7B3B3F")
+
+figS7 <- ggplot(by_gear, aes(Year, catch_kt, fill = gear_grp)) +
+  band_postcoll() + band_closure() +
+  geom_area(colour = "white", linewidth = 0.15) +
+  scale_fill_manual(values = gear_cols, name = "Gear") +
+  scale_x_continuous(breaks = seq(1950, 2020, 10)) +
+  scale_y_continuous(name = "Catch (×1,000 t)", expand = expansion(mult = c(0, 0.04)),
+                     labels = label_number(big.mark = ",")) +
+  labs(x = NULL,
+       title = "Supplementary Figure S7. Strait of Georgia herring catch by gear, 1951–2025",
+       subtitle = "Gillnets enter the fishery only with the roe fishery in 1972") +
+  theme_herring(11)
+save_fig(figS7, "FigureS7_catch_by_gear", width = 10, height = 5.5)
+figS7
+```
+
+```{r gear-summary}
+by_gear %>%
+  mutate(era = case_when(Year <= 1967 ~ "Reduction era (<=1967)",
+                         Year <= 1971 ~ "Closure (1968-1971)",
+                         TRUE         ~ "Roe era (>=1972)")) %>%
+  group_by(era, gear_grp) %>% summarise(total_kt = sum(catch_kt), .groups = "drop") %>%
+  group_by(era) %>% mutate(share = 100*total_kt/sum(total_kt)) %>%
+  mutate(across(where(is.numeric), ~round(., 1))) %>%
+  kable(caption = "Total catch and gear share by era")
+```
+
+---
+
+## Session information
+
+```{r session}
+sessionInfo()
+```

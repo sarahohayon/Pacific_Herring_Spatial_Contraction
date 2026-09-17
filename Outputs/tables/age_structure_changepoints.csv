@@ -1,0 +1,6 @@
+Metric,Break year,SE,95% CI,Davies P
+Mean age (years),1985,5.18,1974.9-1995.1,0.869
+Proportion age >= 6,1986,0.59,1984.9-1987.1,1.4800000000000002e-21
+Proportion age >= 5,1985.2,0.35,1984.6-1985.9,8.69e-33
+Proportion age >= 4,1985,0.37,1984.3-1985.7,4.54e-47
+Proportion age 1-3,1985,0.37,1984.3-1985.7,4.54e-47

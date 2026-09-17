@@ -1,0 +1,585 @@
+---
+title: "05 — Drivers of spawning occupancy"
+subtitle: "Results 2.3: AR(1)-GAMM model set, collinearity, alternative drivers and robustness (Supplementary Tables S2-S5, Figs. S4-S5)"
+author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      dpi = 150, fig.align = "center")
+source("00_setup.R")
+library(mgcv); library(nlme); library(gratia); library(patchwork)
+library(knitr); library(scales)
+select <- dplyr::select; filter <- dplyr::filter   # guard against masking
+```
+
+The response is logit-transformed annual section occupancy. All models are generalized
+additive mixed models with a first-order autoregressive correlation structure across years,
+which absorbs the strong serial dependence of an annual series; predictors enter as
+penalised thin-plate splines.
+
+Selective pressure on experienced spawners is indexed by the proportion of old fish
+(age ≥ `r OLD_AGE`) in the **dominant, most size-selective gear of each era** — reduction
+seines 1951–1965 and roe gillnets 1972–2024. No samples of either gear exist for the
+intervening years, which span the 1967 stock collapse and the 1968–1971 closure.
+
+```{r data}
+annual <- read_csv(file.path(DERIVED, "annual_series.csv"), show_col_types = FALSE)
+
+dm <- annual %>%
+  filter(!is.na(occupancy), !is.na(prop_old_wt), !is.na(prop_old_n),
+         !is.na(mean_SST), !is.na(ONI_ann), !is.na(mean_PDO)) %>%
+  arrange(Year)
+
+cat(sprintf("Model frame: n = %d years (%d-%d)\n", nrow(dm), min(dm$Year), max(dm$Year)))
+cat(sprintf("cor(prop_old_wt, prop_old_n) = %.4f\n", cor(dm$prop_old_wt, dm$prop_old_n)))
+```
+
+---
+
+## 1  Supplementary Table S3 — collinearity screening
+
+Screening is distinct from model selection: it establishes only that predictors entered into
+the *same* model are not redundant. The two derived removal metrics are algebraic functions
+of catch and the proportion of old fish, so they are collinear with their parents by
+construction and are never entered jointly with them; each is tested separately in
+Table S5.
+
+```{r vif}
+vif_set <- c("prop_old_wt","catch_total_t","SSB","value_per_ton",
+             "mean_SST","ONI_ann","mean_PDO")
+vd <- dm %>% select(all_of(vif_set)) %>% drop_na()
+Xv <- model.matrix(~ ., data = vd)[, -1]
+vif <- sapply(seq_len(ncol(Xv)), function(i) 1/(1 - summary(lm(Xv[, i] ~ Xv[, -i]))$r.squared))
+
+pretty_names <- c(prop_old_wt   = "Proportion of old fish",
+                  catch_total_t = "Total catch",
+                  SSB           = "Spawning stock biomass",
+                  value_per_ton = "Value per tonne (real 2024 CAD)",
+                  mean_SST      = "Mean SST",
+                  ONI_ann       = "Oceanic Nino Index",
+                  mean_PDO      = "Pacific Decadal Oscillation")
+
+tabS3 <- tibble(Predictor = pretty_names[colnames(Xv)],
+                VIF = round(vif, 2),
+                `r with occupancy` = round(sapply(colnames(Xv),
+                    function(v) cor(dm$occupancy, dm[[v]], use = "complete.obs")), 2)) %>%
+  arrange(desc(VIF))
+save_tab(tabS3, "TableS3_collinearity_VIF")
+kable(tabS3, caption = sprintf(
+  "Supplementary Table S3. Variance-inflation factors and correlation with occupancy (n = %d complete years). All VIF < %.1f.",
+  nrow(vd), ceiling(10*max(vif))/10))
+```
+
+---
+
+## 2  Supplementary Table S2 — the driver-combination model set
+
+The candidate set spans a null model, every subset of the three climate indices, the fishery
+predictor alone and additively with each climate subset, and each fishery × climate tensor
+interaction. Models are compared by AIC fitted with ML; adjusted R² and the AR(1) parameter
+are taken from the REML fit of the same structure.
+
+```{r model-set}
+ctrl <- corAR1(form = ~ Year)
+
+fit_one <- function(rhs, method, data = dm) {
+  if (identical(trimws(rhs), "1")) {
+    g <- tryCatch(gls(logit_occ ~ 1, data = data, correlation = ctrl, method = method),
+                  error = function(e) NULL)
+    if (is.null(g)) return(NULL)
+    return(list(lme = g, gam = NULL))
+  }
+  tryCatch(gamm(as.formula(paste("logit_occ ~", rhs)), data = data,
+                correlation = ctrl, method = method), error = function(e) NULL)
+}
+get_phi <- function(m) tryCatch(round(coef(m$lme$modelStruct$corStruct,
+                                           unconstrained = FALSE), 3),
+                                error = function(e) NA_real_)
+
+model_defs <- tibble::tribble(
+  ~name, ~group, ~rhs,
+  "null","null","1",
+  "SST","climate","s(mean_SST,k=5)",
+  "ONI","climate","s(ONI_ann,k=4)",
+  "PDO","climate","s(mean_PDO,k=5)",
+  "SST+ONI","climate","s(mean_SST,k=5)+s(ONI_ann,k=4)",
+  "SST+PDO","climate","s(mean_SST,k=5)+s(mean_PDO,k=5)",
+  "ONI+PDO","climate","s(ONI_ann,k=4)+s(mean_PDO,k=5)",
+  "SST+ONI+PDO","climate","s(mean_SST,k=5)+s(ONI_ann,k=4)+s(mean_PDO,k=5)",
+  "OLD","fishing","s({OLD},k=5)",
+  "OLD+SST","fish+clim","s({OLD},k=5)+s(mean_SST,k=5)",
+  "OLD+ONI","fish+clim","s({OLD},k=5)+s(ONI_ann,k=4)",
+  "OLD+PDO","fish+clim","s({OLD},k=5)+s(mean_PDO,k=5)",
+  "OLD+SST+ONI","fish+clim","s({OLD},k=5)+s(mean_SST,k=5)+s(ONI_ann,k=4)",
+  "OLD+SST+PDO","fish+clim","s({OLD},k=5)+s(mean_SST,k=5)+s(mean_PDO,k=5)",
+  "OLD+ONI+PDO","fish+clim","s({OLD},k=5)+s(ONI_ann,k=4)+s(mean_PDO,k=5)",
+  "OLD+SST+ONI+PDO","fish+clim","s({OLD},k=5)+s(mean_SST,k=5)+s(ONI_ann,k=4)+s(mean_PDO,k=5)",
+  "OLD*SST","interaction","s({OLD},k=5)+s(mean_SST,k=5)+ti({OLD},mean_SST,k=c(4,4))",
+  "OLD*ONI","interaction","s({OLD},k=5)+s(ONI_ann,k=4)+ti({OLD},ONI_ann,k=c(4,4))",
+  "OLD*PDO","interaction","s({OLD},k=5)+s(mean_PDO,k=5)+ti({OLD},mean_PDO,k=c(4,4))")
+
+run_model_set <- function(old_var, label = "prop_old", data = dm) {
+  defs <- model_defs %>% mutate(rhs  = gsub("\\{OLD\\}", old_var, rhs),
+                                name = gsub("OLD", label, name))
+  map_dfr(seq_len(nrow(defs)), function(i) {
+    ml <- fit_one(defs$rhs[i], "ML", data); re <- fit_one(defs$rhs[i], "REML", data)
+    if (is.null(ml)) return(tibble(Model = defs$name[i], Class = defs$group[i],
+                                   AIC = NA_real_, `adj. R2` = NA_real_, `AR(1) phi` = NA_real_))
+    tibble(Model = defs$name[i], Class = defs$group[i], AIC = AIC(ml$lme),
+           `adj. R2`   = if (is.null(re$gam)) NA_real_ else summary(re$gam)$r.sq,
+           `AR(1) phi` = get_phi(re))
+  }) %>%
+    mutate(dAIC = round(AIC - min(AIC, na.rm = TRUE), 1),
+           AIC  = round(AIC, 1), `adj. R2` = round(`adj. R2`, 3)) %>%
+    arrange(dAIC) %>% relocate(dAIC, .after = AIC)
+}
+
+tabS2 <- run_model_set("prop_old_wt")
+save_tab(tabS2, "TableS2_model_selection")
+kable(tabS2, caption = sprintf(
+  "Supplementary Table S2. Model selection for annual spawning occupancy. AR(1)-GAMMs of logit(occupancy), %d-%d (n = %d years), ordered by dAIC.",
+  min(dm$Year), max(dm$Year), nrow(dm)))
+```
+
+---
+
+## 3  Supplementary Table S4 — smooth-term statistics
+
+```{r smooths}
+m_best <- fit_one("s(prop_old_wt,k=5)+s(mean_SST,k=5)", "REML")
+m_full <- fit_one("s(prop_old_wt,k=5)+s(mean_SST,k=5)+s(ONI_ann,k=4)+s(mean_PDO,k=5)", "REML")
+m_old  <- fit_one("s(prop_old_wt,k=5)", "REML")
+m_sst  <- fit_one("s(mean_SST,k=5)", "REML")
+
+term_lab <- c("s(prop_old_wt)" = "s(prop_old)", "s(mean_SST)" = "s(SST)",
+              "s(ONI_ann)" = "s(ONI)", "s(mean_PDO)" = "s(PDO)")
+
+smooth_rows <- function(m, model_label) {
+  st <- summary(m$gam)$s.table
+  tibble(Model = model_label,
+         Term  = term_lab[rownames(st)],
+         edf   = round(st[, "edf"], 2),
+         F     = round(st[, "F"], 2),
+         P     = signif(st[, "p-value"], 3))
+}
+
+tabS4 <- bind_rows(
+  smooth_rows(m_best, "Best-supported: prop_old + SST"),
+  smooth_rows(m_full, "Full additive: prop_old + SST + ONI + PDO"))
+save_tab(tabS4, "TableS4_smooth_terms")
+kable(tabS4, caption = "Supplementary Table S4. Smooth-term statistics for the best-supported and full additive models.")
+
+cat(sprintf("\nprop_old alone : adj. R2 = %.3f | phi = %.3f\n",
+            summary(m_old$gam)$r.sq, get_phi(m_old)))
+cat(sprintf("SST alone      : adj. R2 = %.3f | phi = %.3f\n",
+            summary(m_sst$gam)$r.sq, get_phi(m_sst)))
+cat(sprintf("prop_old + SST : adj. R2 = %.3f | phi = %.3f\n",
+            summary(m_best$gam)$r.sq, get_phi(m_best)))
+cat(sprintf("Full additive  : adj. R2 = %.3f | phi = %.3f | dAIC vs best = %.1f\n",
+            summary(m_full$gam)$r.sq, get_phi(m_full),
+            tabS2$dAIC[tabS2$Model == "prop_old+SST+ONI+PDO"]))
+cat(sprintf("Interaction models: minimum dAIC = %.1f\n",
+            min(tabS2$dAIC[tabS2$Class == "interaction"])))
+```
+
+---
+
+## 4  Supplementary Table S5 — alternative drivers
+
+Each alternative predictor is fitted alone, and then added to the best-supported model. If
+selectivity is the operative mechanism, the *amount* removed, the *price*, and the *stock
+size* should each be weak alone and add nothing alongside the proportion of old fish.
+
+```{r alternatives}
+dm_val <- dm %>% filter(!is.na(value_per_ton))
+
+alt_row <- function(var, label, data = dm) {
+  ma  <- fit_one(sprintf("s(%s,k=5)", var), "REML", data)
+  mad <- fit_one(sprintf("s(prop_old_wt,k=5)+s(mean_SST,k=5)+s(%s,k=5)", var), "REML", data)
+  sa  <- summary(ma$gam)$s.table
+  sd_ <- summary(mad$gam)$s.table
+  tibble(Predictor = label,
+         `adj. R2 (alone)` = round(summary(ma$gam)$r.sq, 3),
+         `F (alone)` = round(sa[paste0("s(",var,")"), "F"], 2),
+         `P (alone)` = signif(sa[paste0("s(",var,")"), "p-value"], 3),
+         `phi (alone)` = get_phi(ma),
+         `F (added)` = round(sd_[paste0("s(",var,")"), "F"], 2),
+         `P (added)` = signif(sd_[paste0("s(",var,")"), "p-value"], 3),
+         `adj. R2 (model)` = round(summary(mad$gam)$r.sq, 3),
+         `phi (model)` = get_phi(mad))
+}
+
+tabS5 <- bind_rows(
+  alt_row("catch_total_t",    "Total catch"),
+  alt_row("old_removed_t",    "Tonnage of old fish removed"),
+  alt_row("old_removed_frac", "Population fraction of old fish removed"),
+  alt_row("value_per_ton",    "Value per tonne (real 2024 CAD)", dm_val),
+  alt_row("SSB",              "Spawning stock biomass"))
+save_tab(tabS5, "TableS5_alternative_drivers")
+kable(tabS5, caption = sprintf(
+  "Supplementary Table S5. Alternative drivers of spawning occupancy, each fitted alone and added to the best-supported model (prop_old + SST; adj. R2 = %.2f, phi = %.2f).",
+  summary(m_best$gam)$r.sq, get_phi(m_best)))
+
+## Supplementary Table S7 (GAMM columns): the occupancy models refitted on each presence rule
+## (series written by 01), joined to the break and decoupling columns written by 03.
+occ_rules <- read_csv(file.path(DERIVED, "occupancy_rule_sensitivity.csv"), show_col_types = FALSE)
+tabS7b <- occ_rules %>% group_by(rule) %>% group_modify(function(x, k) {
+  dr <- dm %>% select(-occupancy, -logit_occ) %>%
+    inner_join(x %>% select(Year, occupancy), by = "Year") %>%
+    mutate(logit_occ = qlogis(pmin(pmax(occupancy, 0.001), 0.999)))
+  mo <- fit_one("s(prop_old_wt,k=5)", "REML", dr)
+  mb <- fit_one("s(prop_old_wt,k=5)+s(mean_SST,k=5)", "REML", dr)
+  aic_ml <- function(rhs) AIC(fit_one(rhs, "ML", dr)$lme)
+  a_old <- aic_ml("s(prop_old_wt,k=5)")
+  so <- summary(mo$gam)$s.table; sb <- summary(mb$gam)$s.table
+  tibble(`prop_old alone: F`       = round(so["s(prop_old_wt)", "F"], 2),
+         `prop_old alone: P`       = signif(so["s(prop_old_wt)", "p-value"], 2),
+         `prop_old alone: adj. R2` = round(summary(mo$gam)$r.sq, 2),
+         `prop_old + SST: adj. R2` = round(summary(mb$gam)$r.sq, 2),
+         `prop_old + SST: SST P`   = signif(sb["s(mean_SST)", "p-value"], 2),
+         `dAIC, prop_old + SST vs prop_old alone` = round(aic_ml("s(prop_old_wt,k=5)+s(mean_SST,k=5)") - a_old, 1),
+         `dAIC, null vs prop_old alone`           = round(aic_ml("1") - a_old, 1))
+}) %>% ungroup()
+tabS7 <- read_csv(file.path(TABS, "TableS7_occupancy_rule_part_decoupling.csv"), show_col_types = FALSE) %>%
+  left_join(tabS7b, by = "rule") %>%
+  rename(`Presence rule` = rule) %>%
+  arrange(match(`Presence rule`, c("Surveyed spawn records (main analysis)",
+                                   "Spawn biomass > 0 only", "All spawn records")))
+save_tab(tabS7, "TableS7_occupancy_rule_sensitivity")
+kable(tabS7, caption = "Supplementary Table S7. Sensitivity of the occupancy results to the rule for which spawn records count as presence.")
+```
+
+Two predictors return nominally significant smooth terms despite a **negative** adjusted R²
+— that is, they fit worse than an intercept-only model. Both occur in fits with
+near-unit-root residual autocorrelation (φ ≥ 0.9 alone), where the significance test is not
+interpretable; neither improved the best-supported model on AIC or adjusted R².
+
+---
+
+## 5  Supplementary Fig. S4 — robustness of the selectivity result
+
+Four independent ways of getting the answer wrong are tested: measuring selectivity by count
+rather than weight; broadening the fishery from roe gillnets to the whole roe fishery and to
+all fisheries; varying the age threshold that defines an old fish from ≥ 4 to ≥ 7; and
+refitting within the surface-survey period alone, so that the relationship is assessed under
+a single, constant survey method.
+
+```{r robustness-thresholds}
+## rebuild the spliced selectivity index at several age thresholds
+bio_raw <- read_csv(F_BIO, show_col_types = FALSE, name_repair = "minimal", guess_max = 100000)
+names(bio_raw) <- BIO_COLS
+bio <- bio_raw %>%
+  mutate(age = suppressWarnings(as.numeric(age)),
+         weight_g = suppressWarnings(as.numeric(weight_g)),
+         stat_area = suppressWarnings(as.numeric(stat_area)),
+         Year = recode_two_digit_year(year)) %>%
+  filter(stat_area %in% BIO_AREAS, !is.na(age), age >= 1, !is.na(weight_g))
+
+prop_thr <- function(data, thr) {
+  data %>% group_by(Year, season, sample_number) %>%
+    summarise(n_fish = n(), po = sum(weight_g[age >= thr])/sum(weight_g), .groups = "drop") %>%
+    filter(n_fish >= MIN_FISH) %>%
+    group_by(Year) %>% summarise(prop = mean(po), .groups = "drop")
+}
+
+spliced <- function(thr, scope = c("gillnet","roe","all")) {
+  scope <- match.arg(scope)
+  red <- bio %>% filter(source == "Reduction Fishery")
+  roe <- switch(scope,
+    gillnet = bio %>% filter(source == "Roe Fishery", gear == "Gillnet"),
+    roe     = bio %>% filter(source == "Roe Fishery"),
+    all     = bio %>% filter(source != "Test Fishery"))
+  bind_rows(prop_thr(red, thr) %>% filter(Year <= 1971),
+            prop_thr(roe, thr) %>% filter(Year >= 1972)) %>% arrange(Year)
+}
+
+robust_fit <- function(series, label, variant) {
+  d2 <- annual %>% select(Year, logit_occ, mean_SST) %>%
+    inner_join(series %>% rename(prop = 2), by = "Year") %>%
+    filter(!is.na(logit_occ), !is.na(prop), !is.na(mean_SST))
+  m <- tryCatch(gamm(logit_occ ~ s(prop, k = 5) + s(mean_SST, k = 5), data = d2,
+                     correlation = corAR1(form = ~ Year), method = "REML"),
+                error = function(e) NULL)
+  if (is.null(m)) return(NULL)
+  st <- summary(m$gam)$s.table
+  tibble(Variant = variant, Label = label, n = nrow(d2),
+         edf = round(st["s(prop)","edf"], 2),
+         F   = round(st["s(prop)","F"], 2),
+         P   = st["s(prop)","p-value"],
+         `adj. R2` = round(summary(m$gam)$r.sq, 3))
+}
+
+rob <- bind_rows(
+  ## age thresholds, roe gillnet
+  map_dfr(4:7, ~ robust_fit(spliced(.x, "gillnet"), sprintf("age >= %d", .x), "Age threshold")),
+  ## fishery breadth, age >= 5
+  robust_fit(spliced(5, "gillnet"), "Roe gillnet",  "Fishery breadth"),
+  robust_fit(spliced(5, "roe"),     "Full roe fishery", "Fishery breadth"),
+  robust_fit(spliced(5, "all"),     "All fisheries",    "Fishery breadth"),
+  ## weight vs count
+  robust_fit(annual %>% select(Year, prop_old_wt), "By weight", "Selectivity metric"),
+  robust_fit(annual %>% select(Year, prop_old_n),  "By count",  "Selectivity metric"))
+
+## surface-survey period only
+d_surf <- annual %>% filter(Year <= 1984)
+m_surf <- gamm(logit_occ ~ s(prop_old_wt, k = 5) + s(mean_SST, k = 5),
+               data = d_surf %>% filter(!is.na(prop_old_wt), !is.na(mean_SST)),
+               correlation = corAR1(form = ~ Year), method = "REML")
+st_surf <- summary(m_surf$gam)$s.table
+rob <- bind_rows(rob, tibble(
+  Variant = "Survey period", Label = "Surface surveys only (<= 1984)",
+  n = sum(!is.na(d_surf$prop_old_wt) & !is.na(d_surf$mean_SST)),
+  edf = round(st_surf["s(prop_old_wt)","edf"], 2),
+  F   = round(st_surf["s(prop_old_wt)","F"], 2),
+  P   = st_surf["s(prop_old_wt)","p-value"],
+  `adj. R2` = round(summary(m_surf$gam)$r.sq, 3)))
+
+save_tab(rob %>% mutate(P = signif(P, 3)), "robustness_selectivity")
+kable(rob %>% mutate(P = signif(P, 3)),
+      caption = "Robustness of the selectivity effect on spawning occupancy")
+```
+
+## Subset refits: one survey era, and the pre-collapse era alone
+
+Two questions the Results ask of this relationship: is it an artefact of the 1985 switch from
+surface to dive surveys, and is it merely a contrast between the pre- and post-collapse eras?
+Both are answered by refitting inside a single survey method and inside the pre-collapse era
+alone. Each subset is fitted twice: with the primary AR(1) GAMM used throughout the paper
+(as in Table S2 and Fig. S4) and with the AR(1) GLS slope used for the phase-controlled test,
+so that the manuscript and the supplement can quote the same model.
+
+```{r subset-refits}
+sub <- annual %>%
+  filter(!is.na(logit_occ), !is.na(prop_old_wt), !is.na(mean_SST)) %>%
+  mutate(phase = factor(ifelse(Year < BREAK_YEAR, "Pre-collapse", "Post-collapse"),
+                        levels = c("Pre-collapse", "Post-collapse")))
+
+## GLS: a single linear slope, with collapse phase as a covariate where both phases are present
+gls_slope <- function(dat) {
+  form <- if (dplyr::n_distinct(dat$phase) > 1) logit_occ ~ prop_old_wt + phase
+          else                                  logit_occ ~ prop_old_wt
+  st <- summary(gls(form, data = dat, correlation = corAR1(form = ~ Year)))$tTable
+  tibble(slope = round(st["prop_old_wt", "Value"], 2),
+         SE    = round(st["prop_old_wt", "Std.Error"], 2),
+         P     = st["prop_old_wt", "p-value"])
+}
+
+## GAMM: the primary model family (smooth of selectivity + smooth of SST)
+gamm_smooth <- function(dat) {
+  m  <- gamm(logit_occ ~ s(prop_old_wt, k = 5) + s(mean_SST, k = 5), data = dat,
+             correlation = corAR1(form = ~ Year), method = "REML")
+  st <- summary(m$gam)$s.table
+  tibble(edf = round(st["s(prop_old_wt)", "edf"], 2),
+         F   = round(st["s(prop_old_wt)", "F"], 2),
+         P   = st["s(prop_old_wt)", "p-value"],
+         r2  = round(summary(m$gam)$r.sq, 3))
+}
+
+subsets <- list("All years (1951-2024)"           = sub,
+                "Surface-survey period (<= 1984)" = sub %>% filter(Year <= 1984),
+                "Pre-collapse era (<= 1983)"      = sub %>% filter(Year <= 1983))
+
+subset_refits <- bind_rows(lapply(names(subsets), function(nm) {
+  d2 <- subsets[[nm]]; g <- gamm_smooth(d2); l <- gls_slope(d2)
+  tibble(Subset = nm, n = nrow(d2),
+         `GAMM edf` = g$edf, `GAMM F` = g$F, `GAMM P` = signif(g$P, 3),
+         `GAMM adj. R2` = g$r2,
+         `GLS slope` = l$slope, `GLS SE` = l$SE, `GLS P` = signif(l$P, 3))
+}))
+
+save_tab(subset_refits, "subset_refits")
+kable(subset_refits,
+      caption = "Selectivity effect refitted within a single survey era and within the pre-collapse era")
+```
+
+```{r figS4, fig.width=10, fig.height=5}
+figS4 <- rob %>%
+  mutate(Variant = factor(Variant, levels = c("Age threshold","Fishery breadth",
+                                              "Selectivity metric","Survey period")),
+         Label = factor(Label, levels = rev(Label)),
+         sig   = P < 0.05) %>%
+  ggplot(aes(x = `adj. R2`, y = Label)) +
+  geom_col(aes(fill = sig), width = 0.65) +
+  geom_text(aes(label = sprintf("P %s", ifelse(P < 0.001, "< 0.001", sprintf("= %.3f", P)))),
+            hjust = -0.1, size = 3.2) +
+  facet_grid(Variant ~ ., scales = "free_y", space = "free_y", switch = "y") +
+  scale_fill_manual(values = c(`TRUE` = col_old, `FALSE` = "grey70"), guide = "none") +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.28))) +
+  labs(x = "Variance in spawning occupancy explained (adjusted R²)", y = NULL,
+       title = "Supplementary Figure S4. Robustness of the selectivity–occupancy relationship",
+       subtitle = "Each bar is an AR(1)-GAMM of logit(occupancy) ~ s(selectivity) + s(SST); P is for the selectivity smooth") +
+  theme_herring(11) +
+  theme(strip.placement = "outside", strip.text.y.left = element_text(angle = 0, hjust = 1))
+save_fig(figS4, "FigureS4_selectivity_robustness", width = 10, height = 5.5)
+figS4
+```
+
+---
+
+## 6  Supplementary Fig. S5 — partial effects of the four drivers
+
+```{r figS5, fig.width=10, fig.height=7.5}
+st  <- summary(m_full$gam)$s.table
+sm  <- smooth_estimates(m_full$gam) |> add_confint()
+vars   <- c("prop_old_wt","mean_SST","ONI_ann","mean_PDO")
+labs_v <- c(prop_old_wt = "Proportion of old fish removed (by weight)",
+            mean_SST    = "Mean sea-surface temperature (°C)",
+            ONI_ann     = "Oceanic Niño Index",
+            mean_PDO    = "Pacific Decadal Oscillation")
+cols_v <- c(prop_old_wt = col_old, mean_SST = col_sst,
+            ONI_ann = "#7A7A7A", mean_PDO = "#7A7A7A")
+
+mk <- function(v) {
+  s <- sm |> filter(.smooth == paste0("s(", v, ")")) |> rename(x = all_of(v))
+  r <- dm |> rename(x = all_of(v))
+  p <- st[paste0("s(", v, ")"), "p-value"]
+  ggplot(s, aes(x, .estimate)) +
+    geom_hline(yintercept = 0, linetype = "dotted", colour = "grey50") +
+    geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci), alpha = 0.18, fill = cols_v[v]) +
+    geom_line(colour = cols_v[v], linewidth = 1.1) +
+    geom_rug(data = r, aes(x = x, y = NULL), inherit.aes = FALSE, alpha = 0.35, sides = "b") +
+    annotate("text", x = -Inf, y = Inf, hjust = -0.1, vjust = 1.5, size = 3.6,
+             fontface = "bold", colour = cols_v[v], label = sprintf("P %s", fmt_p(p))) +
+    labs(x = labs_v[v], y = "Partial effect on logit(occupancy)") +
+    theme_herring(11)
+}
+
+figS5 <- (mk("prop_old_wt") | mk("mean_SST")) / (mk("ONI_ann") | mk("mean_PDO")) +
+  plot_annotation(tag_levels = "a",
+    title = "Supplementary Figure S5. Partial effects of the four candidate drivers in the full additive model",
+    theme = theme(plot.title = element_text(face = "bold", size = 12)))
+save_fig(figS5, "FigureS5_partial_effects", width = 10, height = 8)
+figS5
+```
+
+---
+
+## 7  Figure 3 — the assembled panels
+
+Panel **a** shows the two series the model relates, with SST beneath them; **b** is the
+fitted relationship from the best-supported AR(1)-GAMM; **c** collects the variance explained
+by each candidate driver fitted alone, so the selectivity index can be compared directly
+against climate, catch, price and stock size.
+
+```{r fig3-panels, fig.width=17, fig.height=6.5}
+gear_cols <- c("Reduction seine" = "#7B5B9D", "Roe gillnet" = "#B23A34")
+
+## ---- a  Occupancy, selectivity and SST through time ------------------------
+## prop_old and occupancy are both proportions, so they share the primary axis;
+## SST is rescaled onto that axis and labelled on a secondary one.
+sst_rng <- range(dm$mean_SST, na.rm = TRUE)
+to_prim <- function(x) (x - sst_rng[1]) / diff(sst_rng) * 0.35        # SST -> 0-0.35
+to_sec  <- function(y) y / 0.35 * diff(sst_rng) + sst_rng[1]
+
+p3a <- ggplot(dm, aes(Year)) +
+  geom_rect(data = shade_df, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+            inherit.aes = FALSE, fill = "grey85", alpha = 0.45) +
+  band_closure() +
+  geom_line(aes(y = occupancy), colour = col_occ, linewidth = 1.0) +
+  geom_point(aes(y = occupancy), colour = col_occ, size = 1.8) +
+  geom_line(aes(y = prop_old_wt), colour = col_old, linewidth = 1.0) +
+  geom_point(aes(y = prop_old_wt, shape = fishery_source), colour = col_old, size = 2.2) +
+  geom_smooth(aes(y = to_prim(mean_SST)), method = "gam", formula = y ~ s(x, k = 10),
+              se = FALSE, colour = "#2A9D8F", linewidth = 1.2) +
+  scale_shape_manual(values = c("Reduction seine" = 17, "Roe gillnet" = 16), name = NULL) +
+  scale_y_continuous(
+    name = "Occupancy (grey) · proportion age ≥ 5 (red)",
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0.04, 0.10)),
+    sec.axis = sec_axis(~ to_sec(.), name = "Mean SST (°C, teal)")) +
+  labs(x = "Year") +
+  common_panel_legend(pos = c(0.01, 0.99), just = c(0, 1)) +
+  guides(shape = guide_legend(nrow = 1, override.aes = list(size = 4)))
+
+## ---- b  Occupancy against selectivity, with the GAMM fit -------------------
+pred_grid <- tibble(prop_old_wt = seq(min(dm$prop_old_wt), max(dm$prop_old_wt),
+                                      length.out = 200),
+                    mean_SST    = mean(dm$mean_SST))
+pb_fit  <- predict(m_best$gam, newdata = pred_grid, se.fit = TRUE)
+inv_log <- function(x) exp(x)/(1 + exp(x))
+pred_grid <- pred_grid %>%
+  mutate(fit = inv_log(pb_fit$fit),
+         lo  = inv_log(pb_fit$fit - 1.96*pb_fit$se.fit),
+         hi  = inv_log(pb_fit$fit + 1.96*pb_fit$se.fit))
+
+p3b <- ggplot(dm, aes(prop_old_wt, occupancy)) +
+  geom_ribbon(data = pred_grid, aes(x = prop_old_wt, ymin = lo, ymax = hi),
+              inherit.aes = FALSE, fill = "grey70", alpha = 0.30) +
+  geom_line(data = pred_grid, aes(x = prop_old_wt, y = fit),
+            inherit.aes = FALSE, colour = "grey15", linewidth = 1.3) +
+  geom_point(aes(fill = fishery_source), shape = 21, colour = "white",
+             size = 4, stroke = 0.5) +
+  scale_fill_manual(values = gear_cols, name = NULL) +
+  scale_x_continuous(labels = percent_format(accuracy = 1),
+                     expand = expansion(mult = c(0.03, 0.03))) +
+  scale_y_continuous(labels = percent_format(accuracy = 1),
+                     expand = expansion(mult = c(0.05, 0.12))) +
+  labs(x = "Proportion age ≥ 5 in dominant gear", y = "Spawning occupancy") +
+  theme_science +
+  theme(legend.position = c(0.99, 0.99), legend.justification = c(1, 1),
+        legend.background = element_rect(fill = alpha("white", 0.65), colour = NA),
+        legend.key = element_blank())
+
+## ---- c  Variance explained by each driver fitted alone ---------------------
+get_r2 <- function(model_name) tabS2$`adj. R2`[tabS2$Model == model_name]
+
+r2_tab <- bind_rows(
+  tibble(Driver = "Proportion of old fish",  r2 = summary(m_old$gam)$r.sq,  Class = "Selectivity"),
+  tibble(Driver = "Mean SST",                r2 = summary(m_sst$gam)$r.sq,  Class = "Climate"),
+  tibble(Driver = "Oceanic Niño Index",      r2 = get_r2("ONI"),            Class = "Climate"),
+  tibble(Driver = "Pacific Decadal Osc.",    r2 = get_r2("PDO"),            Class = "Climate"),
+  ## Every Table S5 predictor measures how much was removed, what it was worth,
+  ## or how much stock there was - not how selective the removal was. The two
+  ## removal metrics belong here rather than with selectivity: they are the
+  ## tonnage and population fraction taken, which is the amount, not the target.
+  tabS5 %>% transmute(Driver = Predictor, r2 = `adj. R2 (alone)`,
+                      Class = "Amount / value / abundance"),
+  tibble(Driver = "Old fish + SST (best model)", r2 = summary(m_best$gam)$r.sq,
+         Class = "Best model")) %>%
+  mutate(Class = factor(Class, levels = c("Selectivity", "Climate",
+                                          "Amount / value / abundance", "Best model")),
+         Driver = fct_reorder(Driver, r2))
+
+class_cols <- c("Selectivity" = "#B23A34", "Climate" = "#2A9D8F",
+                "Amount / value / abundance" = "#7B7B7B", "Best model" = "#1A2F6B")
+
+p3c <- ggplot(r2_tab, aes(r2, Driver, fill = Class)) +
+  geom_col(width = 0.72) +
+  geom_vline(xintercept = 0, colour = "grey30", linewidth = 0.5) +
+  scale_fill_manual(values = class_cols, name = NULL) +
+  scale_x_continuous(expand = expansion(mult = c(0.02, 0.12))) +
+  labs(x = "Variance explained (adjusted R²)", y = NULL) +
+  theme_science +
+  theme(axis.text.y = element_text(size = 16),
+        legend.position = c(0.99, 0.02), legend.justification = c(1, 0),
+        legend.background = element_rect(fill = alpha("white", 0.65), colour = NA),
+        legend.key = element_blank())
+
+save_fig(p3a, "Fig3a_occupancy_selectivity_SST", width = 10, height = 6)
+save_fig(p3b, "Fig3b_occupancy_vs_prop_old",     width = 8,  height = 6)
+save_fig(p3c, "Fig3c_variance_explained",        width = 10, height = 6)
+
+fig3 <- (p3a | p3b | p3c) +
+  plot_layout(widths = c(1.25, 1, 1.15)) +
+  plot_annotation(tag_levels = "a") &
+  theme(plot.tag = element_text(size = 26, face = "bold"))
+
+save_fig(fig3, "Figure3_selectivity_predicts_occupancy", width = 24, height = 7)
+fig3
+```
+
+---
+
+## Session information
+
+```{r session}
+sessionInfo()
+```

@@ -1,0 +1,5 @@
+Model,Randomised within,Scheme,Observed slope,Observed t,Null slope mean,Null slope SD,Null t 5th pct,n randomisations,Empirical P
+basic,era,shuffle,-1.88,-5.5,-0.63,0.61,-4.12,1000,0.004
+basic,era,shift,-1.88,-5.5,-0.76,0.6,-4.37,1000,0.002
+phase,phase,shuffle,-1.12,-4.05,0.01,0.31,-1.81,1000,9.99e-4
+phase,phase,shift,-1.12,-4.05,0,0.7,-3.3,1000,0.011

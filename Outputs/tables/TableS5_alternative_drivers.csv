@@ -1,0 +1,6 @@
+Predictor,adj. R2 (alone),F (alone),P (alone),phi (alone),F (added),P (added),adj. R2 (model),phi (model)
+Total catch,0.327,6.23,0.0141,0.647,0.6,0.442,0.601,0.414
+Tonnage of old fish removed,-0.032,2.07,0.155,0.783,0,0.946,0.599,0.416
+Population fraction of old fish removed,-0.036,8.87,2.84e-5,0.867,5.05,0.00996,0.556,0.611
+Value per tonne (real 2024 CAD),0.031,0.57,0.452,0.756,0.02,0.898,0.598,0.419
+Spawning stock biomass,-0.391,5.89,0.00143,0.893,4.11,0.0122,0.495,0.674

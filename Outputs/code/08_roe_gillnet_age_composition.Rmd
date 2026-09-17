@@ -1,0 +1,365 @@
+---
+title: "08 — Age composition of the roe-gillnet catch"
+subtitle: "Which ages the gillnets actually took, and until when — the removal side of the picture that Fig. 2c/2d shows for the population"
+author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      dpi = 150, fig.align = "center")
+source("00_setup.R")
+library(patchwork); library(scales); library(knitr)
+```
+
+Figure 2c/2d track the **population** through the test fishery. This file tracks the
+**removal**: the age composition of what the roe gillnets actually landed, year by year.
+The two are complementary, and the question here is a specific one — which age classes were
+present in the nets, and until when did each one last appear in quantity.
+
+```{r data}
+bio_raw <- read_csv(F_BIO, show_col_types = FALSE, name_repair = "minimal", guess_max = 100000)
+names(bio_raw) <- BIO_COLS
+
+bio <- bio_raw %>%
+  mutate(age       = suppressWarnings(as.numeric(age)),
+         weight_g  = suppressWarnings(as.numeric(weight_g)),
+         length_mm = suppressWarnings(as.numeric(length_mm)),
+         stat_area = suppressWarnings(as.numeric(stat_area)),
+         Year      = recode_two_digit_year(year)) %>%
+  filter(stat_area %in% BIO_AREAS, !is.na(age), age >= 1)
+
+gn <- bio %>% filter(source == "Roe Fishery", gear == "Gillnet")
+tf <- bio %>% filter(source == "Test Fishery")
+
+## keep only years with an adequate sample
+gn_ok <- gn %>% count(Year) %>% filter(n >= MIN_FISH) %>% pull(Year)
+tf_ok <- tf %>% count(Year) %>% filter(n >= MIN_FISH) %>% pull(Year)
+gn <- gn %>% filter(Year %in% gn_ok)
+tf <- tf %>% filter(Year %in% tf_ok)
+
+cat(sprintf("Roe gillnet: %s aged fish, %d years (%d-%d)\n",
+            format(nrow(gn), big.mark = ","), n_distinct(gn$Year),
+            min(gn$Year), max(gn$Year)))
+cat(sprintf("Test fishery: %s aged fish, %d years (%d-%d)\n",
+            format(nrow(tf), big.mark = ","), n_distinct(tf$Year),
+            min(tf$Year), max(tf$Year)))
+cat(sprintf("Age range in gillnet samples: %d-%d\n", min(gn$age), max(gn$age)))
+```
+
+---
+
+## 1  Annual age composition of the gillnet catch
+
+```{r composition}
+AGE_MAX <- 10
+
+comp <- function(d, label) {
+  d %>% mutate(age_c = pmin(age, AGE_MAX)) %>%
+    group_by(Year, age_c) %>% summarise(n = n(), .groups = "drop") %>%
+    group_by(Year) %>% mutate(prop = n/sum(n), n_year = sum(n)) %>% ungroup() %>%
+    mutate(source = label)
+}
+
+gn_comp <- comp(gn, "Roe gillnet")
+tf_comp <- comp(tf, "Test fishery")
+both    <- bind_rows(gn_comp, tf_comp)
+save_tab(both, "roe_gillnet_vs_test_age_composition")
+
+age_pal <- setNames(viridisLite::viridis(AGE_MAX, option = "C", end = 0.92, direction = -1),
+                    as.character(1:AGE_MAX))
+age_lab <- function(a) ifelse(a == AGE_MAX, paste0(AGE_MAX, "+"), as.character(a))
+
+p_stack <- gn_comp %>%
+  mutate(age_f = factor(age_c, levels = AGE_MAX:1, labels = age_lab(AGE_MAX:1))) %>%
+  ggplot(aes(Year, prop, fill = age_f)) +
+  geom_area(colour = "white", linewidth = 0.12) +
+  scale_fill_manual(values = setNames(age_pal[as.character(AGE_MAX:1)],
+                                      age_lab(AGE_MAX:1)),
+                    name = "Age", guide = guide_legend(reverse = TRUE, ncol = 1)) +
+  scale_y_continuous(labels = percent_format(1), expand = expansion(mult = c(0, 0.02))) +
+  scale_x_continuous(breaks = seq(1970, 2025, 10), expand = expansion(mult = c(0.01, 0.01))) +
+  labs(x = NULL, y = "Proportion of gillnet catch",
+       title = "a  Age composition of the roe-gillnet catch") +
+  theme_herring(11)
+p_stack
+```
+
+---
+
+## 2  Which ages were present, and until when
+
+The heatmap is the direct answer: each cell is the share of that year's gillnet catch made
+up of that age class. White cells are ages that did not appear at all.
+
+```{r heatmap, fig.width=11, fig.height=5}
+p_heat <- gn_comp %>%
+  ggplot(aes(Year, factor(age_c, levels = 1:AGE_MAX, labels = age_lab(1:AGE_MAX)))) +
+  geom_tile(aes(fill = prop), colour = "white", linewidth = 0.25) +
+  scale_fill_gradientn(colours = c("#F7F7F7","#FDDBC7","#F4A582","#D6604D","#A50026"),
+                       labels = percent_format(1), name = "Share of\ncatch",
+                       na.value = "white") +
+  scale_x_continuous(breaks = seq(1970, 2025, 5), expand = c(0, 0)) +
+  labs(x = NULL, y = "Age", title = "b  Share of the gillnet catch by age class") +
+  theme_herring(11) + theme(panel.grid = element_blank())
+p_heat
+```
+
+```{r last-appearance}
+## for each age class: first and last year it appeared at all, and the last year it
+## made up at least 1% of the catch
+thr <- 0.01
+last_tab <- gn_comp %>% group_by(age_c) %>%
+  summarise(`first year present` = min(Year),
+            `last year present`  = max(Year),
+            `years present`      = n(),
+            `last year >= 1% of catch` =
+              ifelse(any(prop >= thr), max(Year[prop >= thr]), NA_integer_),
+            `mean share 1972-1983` = mean(prop[Year <= 1983]),
+            `mean share 1984-2024` = mean(prop[Year >= 1984]),
+            .groups = "drop") %>%
+  mutate(Age = age_lab(age_c),
+         across(starts_with("mean share"), ~ sprintf("%.1f%%", 100*.x))) %>%
+  select(Age, everything(), -age_c)
+save_tab(last_tab, "roe_gillnet_age_presence")
+kable(last_tab, caption = "Presence of each age class in the roe-gillnet catch")
+```
+
+---
+
+## 3  The upper tail: how far up the age range the nets reached
+
+```{r upper-tail, fig.width=11, fig.height=4.5}
+tail_stats <- bind_rows(gn, tf %>% mutate(source = "Test Fishery")) %>%
+  mutate(src = if_else(source == "Roe Fishery", "Roe gillnet", "Test fishery")) %>%
+  group_by(src, Year) %>%
+  summarise(q95     = quantile(age, 0.95),
+            max_age = max(age),
+            prop_7plus = mean(age >= 7),
+            n = n(), .groups = "drop")
+
+p_tail <- tail_stats %>%
+  ggplot(aes(Year, q95, colour = src)) +
+  band_postcoll(2025) + band_closure() +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.3) +
+  geom_smooth(method = "loess", span = 0.45, se = FALSE, linewidth = 1.2) +
+  scale_colour_manual(values = c("Roe gillnet" = "#7B3B3F", "Test fishery" = col_sst),
+                      name = NULL) +
+  scale_x_continuous(breaks = seq(1970, 2025, 10)) +
+  labs(x = NULL, y = "95th percentile of age (years)",
+       title = "c  Upper tail of the age distribution: gillnet catch versus population index") +
+  theme_herring(11) + theme(legend.position = c(0.99, 0.99),
+                            legend.justification = c(1, 1))
+p_tail
+```
+
+```{r tail-summary}
+tail_stats %>%
+  mutate(era = case_when(Year <= 1983 ~ "1972-1983",
+                         Year <= 2000 ~ "1984-2000",
+                         TRUE         ~ "2001-2024")) %>%
+  group_by(src, era) %>%
+  summarise(`mean 95th pct age` = round(mean(q95), 2),
+            `mean max age`      = round(mean(max_age), 1),
+            `mean share age >= 7` = sprintf("%.1f%%", 100*mean(prop_7plus)),
+            years = n(), .groups = "drop") %>%
+  kable(caption = "Upper tail of the age distribution by era")
+```
+
+---
+
+## 4  Supplementary Figure S2 — where the gear starts selecting
+
+This is the figure that justifies the age-5 threshold. Panel a is the test fishery, which
+samples the spawning aggregation each spring; panel b is the roe-gillnet catch. Both are
+plotted as the proportion of the aged sample in each age class, in the Fig. 2c colours, with
+a black line marking the age-4/age-5 boundary.
+
+**Why age 5 and not age 4.** Herring mature at about age 3, so age-4 fish are already repeat
+spawners; a threshold at age 4 would not isolate experience. Setting it at age 5 indexes fish
+carrying more than one season of spawning experience. The gear happens to draw its line in
+the same place, and the occupancy models are insensitive to the choice across thresholds from
+age ≥ 4 to ≥ 7 (Fig. S4).
+
+**What panel a is and is not.** The test fishery is the closest available index of the
+spawning aggregation, and it is fishery-independent in the sense that it is not a commercial
+landing. It is *not* an unfished baseline. By 1975, when it begins, the population had
+already been through half a century of reduction fishing, the 1967 collapse, a four-year
+closure and three years of the roe fishery. Panel a therefore shows the age structure of an
+**exploited** population, not a natural one — the comparison in this figure is between what
+the gear takes and what the already-truncated aggregation contains, which if anything makes
+the selectivity contrast conservative.
+
+Ages 1 and 2 are pooled into a single "≤ 2" band so that both panels sum to exactly 100%;
+age 1 occurs only in the test fishery and never exceeds 6% of a sample.
+
+```{r figS2, fig.width=13, fig.height=6}
+## Ages 1-2 pooled at the bottom, 10 and above pooled at the top, so every column
+## in both panels sums to exactly 1. Age 1 appears only in the test fishery.
+age_bin <- function(a) pmin(pmax(a, 2), 10)
+
+age_palette <- c("2"="#2D6A4F", "3"="#40916C", "4"="#74C69D", "5"="#B7E4C7",
+                 "6"="#FFD166", "7"="#F4A261", "8"="#E76F51", "9"="#C0392B",
+                 "10"="#7B241C")
+age_labels  <- c("2"="≤ 2", "3"="3", "4"="4", "5"="5", "6"="6",
+                 "7"="7", "8"="8", "9"="9", "10"="10+")
+AGES_CMP <- 2:10
+
+panel_lab <- c("Test fishery" = "a  Test fishery — the exploited spawning population",
+               "Roe gillnet"  = "b  Roe gillnet — the catch")
+
+## An age class absent from a given year has no row, and geom_area then draws that
+## band straight from the previous year it appeared in to the next — which stacks
+## out of register with the bands that do have a point at the missing year, and
+## makes the column overshoot 100%. Completing the grid with explicit zeros fixes
+## it: every age class has a value in every sampled year.
+comp2 <- bind_rows(gn %>% mutate(src = "Roe gillnet"),
+                   tf %>% mutate(src = "Test fishery")) %>%
+  mutate(age_c = age_bin(age)) %>%
+  group_by(src, Year, age_c) %>% summarise(n = n(), .groups = "drop") %>%
+  group_by(src) %>%
+  complete(Year = full_seq(Year, 1), age_c = AGES_CMP, fill = list(n = 0)) %>%
+  ungroup() %>%
+  ## drop years the source did not sample at all (n = 0 across every age class)
+  group_by(src, Year) %>% filter(sum(n) > 0) %>%
+  mutate(prop = n/sum(n)) %>% ungroup() %>%
+  mutate(age_f  = factor(age_c, levels = rev(AGES_CMP),
+                         labels = unname(age_labels[as.character(rev(AGES_CMP))])),
+         source = factor(panel_lab[src], levels = unname(panel_lab)))
+
+## boundary between age 4 and age 5 = proportion aged 4 or younger
+thresh <- comp2 %>% group_by(source, Year) %>%
+  summarise(p_young = sum(prop[age_c <= 4]), .groups = "drop")
+
+## 1978-1979 herring gold rush: catch peaked in 1978 (the largest roe-era catch)
+## and the real price per tonne peaked in 1979 at more than three times any other
+## year in the series. Marked across both panels.
+GOLD <- c(1977.5, 1979.5)
+
+figS2 <- ggplot(comp2, aes(Year, prop, fill = age_f)) +
+  geom_area(linewidth = 0) +
+  geom_line(data = thresh, aes(Year, p_young), inherit.aes = FALSE,
+            colour = "black", linewidth = 0.7) +
+  annotate("rect", xmin = GOLD[1], xmax = GOLD[2], ymin = 0, ymax = 1,
+           fill = NA, colour = "black", linewidth = 0.5, linetype = "22") +
+  annotate("segment", x = GOLD[1], xend = GOLD[2], y = 1.035, yend = 1.035,
+           colour = "black", linewidth = 0.5) +
+  annotate("text", x = mean(GOLD), y = 1.055, label = "1978–79 gold rush",
+           size = 3.3, vjust = 0, fontface = "italic") +
+  facet_wrap(~ source, nrow = 1) +
+  scale_fill_manual(values = setNames(unname(age_palette[as.character(rev(AGES_CMP))]),
+                                      unname(age_labels[as.character(rev(AGES_CMP))])),
+                    name = "Age",
+                    guide = guide_legend(reverse = TRUE, keyheight = unit(13, "pt"))) +
+  ## the stack tops out at exactly 1; the headroom above it carries the gold-rush label
+  scale_y_continuous(labels = percent_format(1), breaks = seq(0, 1, 0.25),
+                     limits = c(0, 1.10), expand = expansion(mult = c(0, 0))) +
+  ## common limits so the two panels are read against the same time axis, even
+  ## though the test fishery series starts three years later than the gillnet one
+  scale_x_continuous(breaks = seq(1975, 2020, 10), limits = c(1972, 2024),
+                     expand = expansion(mult = c(0, 0))) +
+  labs(x = NULL, y = "Proportion of aged sample",
+       title = "Supplementary Figure S2. Age composition of the exploited population and of the gillnet catch",
+       subtitle = paste("Black line marks the age-4/age-5 boundary; everything above it is an",
+                        "old fish (age ≥ 5) as defined in this study.")) +
+  theme_herring(12) +
+  theme(strip.text = element_text(face = "bold", size = 12, hjust = 0),
+        panel.spacing.x = unit(14, "pt"),
+        plot.title = element_text(size = 13))
+
+save_fig(figS2, "FigureS2_age_composition_population_vs_gillnet", width = 13, height = 6)
+figS2
+```
+
+```{r stack-check}
+## every column must sum to exactly 1 in both panels
+comp2 %>% group_by(source, Year) %>% summarise(total = sum(prop), .groups = "drop") %>%
+  group_by(source) %>%
+  summarise(min = round(min(total), 6), max = round(max(total), 6), years = n(),
+            .groups = "drop") %>%
+  kable(caption = "Check: stacked proportions sum to 1 in every year of both panels")
+```
+
+### Dating the gold rush
+
+The "herring gold rush" is marked at **1978–1979**, and the two series that define it peak in
+consecutive years: catch peaks in 1978 and the real price per tonne peaks in 1979.
+
+```{r goldrush}
+annual <- read_csv(file.path(DERIVED, "annual_series.csv"), show_col_types = FALSE)
+annual %>% filter(Year %in% 1972:1985) %>%
+  transmute(Year,
+            `Catch (kt)` = round(catch_total_t/1000, 1),
+            `Real value per tonne (2024 CAD)` = round(value_per_ton)) %>%
+  kable(caption = "Catch and real landed value per tonne through the gold-rush years")
+
+gr <- annual %>% filter(!is.na(value_per_ton))
+cat(sprintf("Peak real value: %s CAD/t in %d — %.1f times the next-highest year (%s CAD/t in %d)\n",
+            format(round(max(gr$value_per_ton)), big.mark = ","),
+            gr$Year[which.max(gr$value_per_ton)],
+            max(gr$value_per_ton)/max(gr$value_per_ton[-which.max(gr$value_per_ton)]),
+            format(round(max(gr$value_per_ton[-which.max(gr$value_per_ton)])), big.mark = ","),
+            gr$Year[order(-gr$value_per_ton)][2]))
+cat(sprintf("Peak roe-era catch: %.1f kt in %d\n",
+            max(annual$catch_total_t[annual$Year >= 1972], na.rm = TRUE)/1000,
+            annual$Year[annual$Year >= 1972][which.max(annual$catch_total_t[annual$Year >= 1972])]))
+cat(sprintf("1978 value was %.1f times the 1977 value; 1979 was %.1f times 1978\n",
+            gr$value_per_ton[gr$Year == 1978]/gr$value_per_ton[gr$Year == 1977],
+            gr$value_per_ton[gr$Year == 1979]/gr$value_per_ton[gr$Year == 1978]))
+```
+
+```{r threshold-numbers}
+thresh %>%
+  mutate(era = if_else(Year <= 1983, "1975-1983", "1984-2024")) %>%
+  group_by(source, era) %>%
+  summarise(`mean proportion age >= 5` = sprintf("%.0f%%", 100*mean(1 - p_young)),
+            years = n(), .groups = "drop") %>%
+  kable(caption = "Proportion of the sample aged 5 or older, by source and era")
+```
+
+```{r crossover-stats}
+## the quantitative claim behind the figure and the caption
+cross <- both %>% filter(age_c %in% 2:10) %>%
+  select(Year, age_c, source, prop) %>%
+  pivot_wider(names_from = source, values_from = prop) %>%
+  filter(!is.na(`Roe gillnet`), !is.na(`Test fishery`), `Test fishery` > 0) %>%
+  mutate(ratio = `Roe gillnet`/`Test fishery`,
+         era   = if_else(Year <= 1983, "1975-1983", "1984-2024")) %>%
+  group_by(Age = age_c) %>%
+  summarise(`median ratio` = round(median(ratio), 2),
+            `years gillnet > test` = sprintf("%d / %d", sum(ratio > 1), n()),
+            `median ratio 1975-1983` = round(median(ratio[era == "1975-1983"]), 2),
+            `median ratio 1984-2024` = round(median(ratio[era == "1984-2024"]), 2),
+            .groups = "drop")
+save_tab(cross, "gillnet_selectivity_ratio_by_age")
+kable(cross, caption = paste("Over-representation of each age class in the roe-gillnet catch",
+                             "relative to the test fishery. A ratio above 1 means the gear",
+                             "takes that age class disproportionately."))
+```
+
+---
+
+## 5  Assembled diagnostic figure
+
+Panels a–c are diagnostics, not manuscript figures; only the age-by-age comparison above is
+carried into the Supplement.
+
+```{r assemble, fig.width=13, fig.height=11}
+fig <- (p_stack / p_heat / p_tail) + plot_layout(heights = c(1, 1, 0.9))
+save_fig(fig, "RoeGillnet_age_composition_diagnostics", width = 13, height = 11)
+fig
+```
+
+---
+
+## Session information
+
+```{r session}
+sessionInfo()
+```

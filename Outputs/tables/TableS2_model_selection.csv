@@ -1,0 +1,20 @@
+Model,Class,AIC,dAIC,adj. R2,AR(1) phi
+prop_old+SST,fish+clim,109.5,0,0.606,0.414
+prop_old,fishing,110.9,1.3,0.539,0.5
+prop_old+SST+ONI,fish+clim,111.1,1.6,0.613,0.404
+prop_old+SST+PDO,fish+clim,111.7,2.2,0.616,0.404
+prop_old*SST,interaction,113.5,4,0.561,0.499
+prop_old+SST+ONI+PDO,fish+clim,114.4,4.9,0.614,0.403
+prop_old+ONI,fish+clim,114.5,5,0.532,0.499
+prop_old+PDO,fish+clim,114.6,5.1,0.537,0.498
+prop_old+ONI+PDO,fish+clim,118.4,8.9,0.528,0.497
+prop_old*ONI,interaction,118.7,9.2,0.52,0.533
+prop_old*PDO,interaction,119.9,10.4,0.527,0.51
+SST,climate,121.2,11.7,0.234,0.68
+SST+ONI,climate,122.2,12.7,0.295,0.642
+null,null,122.5,12.9,NA,0.771
+SST+PDO,climate,123.9,14.4,0.25,0.674
+SST+ONI+PDO,climate,125.8,16.3,0.286,0.645
+ONI,climate,126.1,16.6,-0.01,0.766
+PDO,climate,126.4,16.9,-0.017,0.771
+ONI+PDO,climate,130.1,20.6,-0.026,0.765

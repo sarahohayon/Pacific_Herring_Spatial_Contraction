@@ -1,0 +1,663 @@
+---
+title: "03 — Biomass recovery without spatial recovery"
+subtitle: "Results 2.1: change-point, hysteresis, matched-biomass contrast, and the survey-rescaling sensitivity (Supplementary Table S1)"
+author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      dpi = 150, fig.align = "center")
+source("00_setup.R")
+library(strucchange); library(knitr); library(mgcv); library(patchwork)
+library(readxl); library(scales)
+```
+
+Every statistic reported in Results §2.1 is produced here. The argument has four steps:
+
+1. the occupancy series contains an abrupt structural break, independent of any phase we impose;
+2. once that break is accounted for, biomass has no detectable effect on occupancy;
+3. contrasting the two phases *at equivalent biomass* shows the same gap;
+4. the conclusion survives any plausible rescaling of the older surface-survey index
+   (**Supplementary Table S1**), including corrections large enough to erase the apparent
+   biomass recovery altogether.
+
+```{r load}
+annual    <- read_csv(file.path(DERIVED, "annual_series.csv"), show_col_types = FALSE)
+site_year <- read_csv(file.path(DERIVED, "site_year_spawn.csv"), show_col_types = FALSE)
+
+d <- annual %>%
+  select(Year, n_active, occupancy, SSB) %>%
+  filter(!is.na(occupancy)) %>%
+  mutate(SSBk  = SSB/1000,
+         phase = factor(if_else(Year < BREAK_YEAR, "Pre-collapse", "Post-collapse"),
+                        levels = c("Pre-collapse","Post-collapse"))) %>%
+  arrange(Year)
+
+N_all <- round(unique(d$n_active / d$occupancy)[1])
+cat(sprintf("Occupancy denominator N_all = %d sections; series %d-%d (n = %d years)\n",
+            N_all, min(d$Year), max(d$Year), nrow(d)))
+```
+
+---
+
+## 1  The occupancy series contains a structural break
+
+A supF test asks whether *any* break is present; the BIC-optimal single-break model then
+locates it and returns a 95% confidence interval. Neither uses the 1984 boundary as an
+input, so the break year is estimated, not assumed.
+
+```{r changepoint}
+sc <- sctest(d$occupancy ~ 1, type = "supF")
+print(sc)
+
+bp <- breakpoints(d$occupancy ~ 1, breaks = 1)
+ci <- confint(bp, breaks = 1)$confint
+
+cat(sprintf("\nBreak after %d (new regime from %d); 95%% CI %d-%d\n",
+            d$Year[bp$breakpoints], d$Year[bp$breakpoints + 1],
+            d$Year[ci[1]], d$Year[ci[3]]))
+cat(sprintf("supF = %.0f, P %s\n", sc$statistic, fmt_p(sc$p.value)))
+
+cat(sprintf("\nLargest single-year decline: %d -> %d, %d -> %d occupied sections\n",
+            1983, 1984, d$n_active[d$Year == 1983], d$n_active[d$Year == 1984]))
+
+pre  <- d %>% filter(phase == "Pre-collapse")
+post <- d %>% filter(phase == "Post-collapse")
+cat(sprintf("Pre-collapse  (<=%d): %.1f +/- %.1f sections (%.0f%%)\n",
+            BREAK_YEAR-1, mean(pre$n_active), sd(pre$n_active), 100*mean(pre$occupancy)))
+cat(sprintf("Post-collapse (>=%d): %.1f +/- %.1f sections (%.0f%%)\n",
+            BREAK_YEAR, mean(post$n_active), sd(post$n_active), 100*mean(post$occupancy)))
+cat(sprintf("Decline in occupied sections: %.0f%%\n",
+            100*(mean(pre$n_active) - mean(post$n_active))/mean(pre$n_active)))
+```
+
+### The contraction precedes the change in survey method
+
+Dive surveys began in the Strait of Georgia in 1985 and immediately dominated the index. The contraction occurred in 1984, while
+every spawn record in the Strait was still a surface survey — so it cannot be an artefact of
+the method transition.
+
+```{r survey-method}
+spawn_raw <- read_csv(F_SPAWN, show_col_types = FALSE) %>%
+  mutate(StatisticalArea = suppressWarnings(as.numeric(StatisticalArea))) %>%
+  keep_surveyed()   # presence rule, 00_setup.R
+meth <- spawn_raw %>% filter(Region == SOG_REGION, StatisticalArea %in% OCC_AREAS, !is.na(Year)) %>%
+  mutate(period = if_else(Year <= 1984, "1951-1984", "1985-2025"),
+         bio_surface   = replace_na(Surface, 0),
+         bio_under     = replace_na(Understory, 0),
+         bio_macro     = replace_na(Macrocystis, 0))
+meth %>% group_by(period) %>%
+  summarise(n_records = n(),
+            pct_surface_derived   = 100*sum(bio_surface)/sum(bio_surface+bio_under+bio_macro),
+            pct_understory_derived= 100*sum(bio_under)  /sum(bio_surface+bio_under+bio_macro),
+            .groups = "drop") %>%
+  mutate(across(where(is.numeric), ~round(., 1))) %>%
+  kable(caption = "Share of egg deposition by survey component, before and after the 1985 dive-survey transition")
+
+## records of more than one spawn event per location-year, before vs after
+multi <- spawn_raw %>% filter(Region == SOG_REGION, StatisticalArea %in% OCC_AREAS) %>%
+  count(LocationCode, Year) %>%
+  group_by(Year) %>% summarise(pct_multi = 100*mean(n > 1), .groups = "drop") %>%
+  filter(Year %in% 1951:2024) %>% arrange(Year)
+sc_multi <- sctest(multi$pct_multi ~ 1, type = "supF")
+bp_multi <- breakpoints(multi$pct_multi ~ 1, breaks = 1)
+cat(sprintf("Multiple spawn records per location-year: structural break after %d (supF = %.0f, P %s)\n",
+            multi$Year[bp_multi$breakpoints], sc_multi$statistic, fmt_p(sc_multi$p.value)))
+cat(sprintf("  mean %% of location-years with >1 record: before %.0f%%, after %.0f%%\n",
+            mean(multi$pct_multi[multi$Year <= multi$Year[bp_multi$breakpoints]]),
+            mean(multi$pct_multi[multi$Year >  multi$Year[bp_multi$breakpoints]])))
+```
+
+---
+
+## 2  Biomass does not explain occupancy once the phase is accounted for
+
+```{r hysteresis-model}
+m_hyst <- lm(occupancy ~ scale(SSB) + phase, data = d)
+print(round(summary(m_hyst)$coefficients, 4))
+
+p_ssb   <- summary(m_hyst)$coefficients["scale(SSB)", "Pr(>|t|)"]
+p_phase <- summary(m_hyst)$coefficients[grep("^phase", rownames(summary(m_hyst)$coefficients)),
+                                        "Pr(>|t|)"]
+cat(sprintf("\nSSB: P %s | collapse phase: P %s\n", fmt_p(p_ssb), fmt_p(p_phase)))
+
+cat(sprintf("Mean SSB: pre %.0f kt, post %.0f kt (post/pre = %.2f)\n",
+            mean(pre$SSBk), mean(post$SSBk), mean(post$SSBk)/mean(pre$SSBk)))
+cat(sprintf("Peak SSB: %.0f kt in %d; pre-collapse maximum %.0f kt in %d\n",
+            max(d$SSBk), d$Year[which.max(d$SSBk)],
+            max(pre$SSBk), pre$Year[which.max(pre$SSBk)]))
+cat(sprintf("Minimum SSB: %.0f kt in %d, occupancy that year = %.0f%%\n",
+            min(d$SSBk), d$Year[which.min(d$SSBk)], 100*d$occupancy[which.min(d$SSBk)]))
+```
+
+### Matched-biomass contrast
+
+Because the two phases differ in mean biomass, the phase effect is re-examined over the
+range of SSB actually observed before the collapse, so that pre- and post-collapse years are
+contrasted at equivalent biomass.
+
+```{r matched}
+matched_contrast <- function(dat) {
+  rng <- range(dat$SSB[dat$phase == "Pre-collapse"])
+  a <- dat %>% filter(phase == "Pre-collapse")
+  b <- dat %>% filter(phase == "Post-collapse", SSB >= rng[1], SSB <= rng[2])
+  tibble(occ_pre = mean(a$occupancy), n_pre = nrow(a),
+         occ_post_matched = mean(b$occupancy), n_post_matched = nrow(b))
+}
+mc <- matched_contrast(d)
+cat(sprintf("At equivalent biomass: pre %.0f%% (n = %d) vs post %.0f%% (n = %d)\n",
+            100*mc$occ_pre, mc$n_pre, 100*mc$occ_post_matched, mc$n_post_matched))
+```
+
+---
+
+## 3  Supplementary Table S1 — sensitivity to rescaling the surface-survey index
+
+Surface and dive surveys are not on the same scale: surface surveys used subjective
+intensity categories before 1978 and systematically underestimate spawn width, a direct
+multiplier on biomass. DFO estimates separate index scaling parameters for the two periods
+(q₁, q₂). The comparison above is therefore repeated with the surface-era index (≤ 1987, DFO's q₁ period)
+multiplied by a factor *k* spanning the full plausible range — from no correction (k = 1) up
+to and beyond the value that **eliminates the apparent recovery entirely**, i.e. that makes
+mean pre-collapse biomass equal mean post-collapse biomass.
+
+If the decoupling were an artefact of the index scale, some value of *k* should make biomass
+significant and close the occupancy gap. None does.
+
+```{r tableS1}
+k_equalise <- mean(post$SSB) / mean(pre$SSB)
+cat(sprintf("k that equalises pre- and post-collapse mean SSB: %.2f\n", k_equalise))
+
+k_grid <- sort(unique(round(c(1, 1.25, 1.5, k_equalise, 2, 2.5, 3), 2)))
+
+tabS1 <- map_dfr(k_grid, function(k) {
+  dk <- d %>% mutate(SSB = if_else(Year <= 1987, SSB * k, SSB), SSBk = SSB/1000)
+  m  <- lm(occupancy ~ scale(SSB) + phase, data = dk)
+  cf <- summary(m)$coefficients
+  mc <- matched_contrast(dk)
+  pk <- dk %>% filter(phase == "Pre-collapse"); qk <- dk %>% filter(phase == "Post-collapse")
+  tibble(`Surface-era scaling k`     = k,
+         `Mean pre-collapse SSB (kt)`  = round(mean(pk$SSBk)),
+         `Mean post-collapse SSB (kt)` = round(mean(qk$SSBk)),
+         `Post/pre biomass ratio`      = round(mean(qk$SSBk)/mean(pk$SSBk), 2),
+         `SSB P`   = signif(cf["scale(SSB)","Pr(>|t|)"], 2),
+         `Phase P` = signif(cf[grep("^phase", rownames(cf)),"Pr(>|t|)"], 2),
+         `Occupancy pre (%)`               = round(100*mc$occ_pre),
+         `Occupancy post, matched SSB (%)` = round(100*mc$occ_post_matched),
+         `n matched post-collapse years`   = mc$n_post_matched)
+})
+
+save_tab(tabS1, "TableS1_survey_rescaling_sensitivity")
+
+## Supplementary Table S7 (break and decoupling columns): the same statistics under three
+## rules for which spawn records count as presence (series written by 01). 05 adds the GAMM.
+occ_rules <- read_csv(file.path(DERIVED, "occupancy_rule_sensitivity.csv"), show_col_types = FALSE) %>%
+  filter(Year %in% d$Year) %>%
+  left_join(d %>% select(Year, SSB), by = "Year") %>%
+  mutate(phase = factor(if_else(Year < BREAK_YEAR, "Pre-collapse", "Post-collapse"),
+                        levels = c("Pre-collapse", "Post-collapse")))
+tabS7a <- occ_rules %>% group_by(rule) %>% group_modify(function(x, k) {
+  x  <- arrange(x, Year)
+  sc <- sctest(x$occupancy ~ 1, type = "supF")
+  bp <- breakpoints(x$occupancy ~ 1, breaks = 1)
+  ci <- tryCatch(confint(bp, breaks = 1)$confint, error = function(e) c(NA, NA, NA))
+  cf <- summary(lm(occupancy ~ scale(SSB) + phase, data = x))$coefficients
+  mc <- matched_contrast(x)
+  tibble(Sections = x$n_sections[1],
+         supF     = round(sc$statistic),
+         `Break (95% CI)` = sprintf("after %d (%d-%d)", x$Year[bp$breakpoints], x$Year[ci[1]], x$Year[ci[3]]),
+         `Occupancy pre (%)`  = round(100*mean(x$occupancy[x$phase == "Pre-collapse"])),
+         `Occupancy post (%)` = round(100*mean(x$occupancy[x$phase == "Post-collapse"])),
+         `Occupancy post, matched SSB (%)` = round(100*mc$occ_post_matched),
+         `SSB P`   = signif(cf["scale(SSB)", "Pr(>|t|)"], 2),
+         `Phase P` = signif(cf["phasePost-collapse", "Pr(>|t|)"], 2))
+}) %>% ungroup()
+save_tab(tabS7a, "TableS7_occupancy_rule_part_decoupling")
+kable(tabS7a, caption = "Occupancy decoupling under three presence rules")
+kable(tabS1, caption = paste(
+  "Supplementary Table S1. Sensitivity of the biomass-occupancy decoupling to rescaling of",
+  "the surface-survey era (<= 1987) spawn index. k = 1 is the published index;",
+  sprintf("k = %.2f equalises mean pre- and post-collapse biomass, eliminating the", k_equalise),
+  "apparent recovery. Occupancy is compared over the range of SSB observed before the collapse."))
+
+## report what the table shows, rather than asserting non-significance
+k_sig <- tabS1$`Surface-era scaling k`[tabS1$`SSB P` < 0.05]
+cat(sprintf("\nAcross the full range of k: SSB P = %.3f-%.2f; %s; phase P %s throughout.\n",
+            min(tabS1$`SSB P`), max(tabS1$`SSB P`),
+            if (length(k_sig)) paste0("P < 0.05 only at k = ", paste(k_sig, collapse = ", "),
+                                      " (within-phase SSB effect negative)") else "never significant",
+            fmt_p(max(tabS1$`Phase P`))))
+cat(sprintf("Occupancy at matched biomass: pre %d%%, post %d-%d%%.\n",
+            unique(tabS1$`Occupancy pre (%)`)[1],
+            min(tabS1$`Occupancy post, matched SSB (%)`),
+            max(tabS1$`Occupancy post, matched SSB (%)`)))
+```
+
+---
+
+## 4  Latitudinal extent: contraction, not a directional shift
+
+```{r latitude}
+occ_lat <- site_year %>%
+  filter(Year %in% 1951:2025) %>%   # every recorded spawn, with or without a biomass estimate
+  mutate(phase = if_else(Year < BREAK_YEAR, "Pre-collapse", "Post-collapse"))
+
+occ_lat %>% group_by(phase) %>%
+  summarise(lat_min = round(min(Latitude), 2),
+            q05     = round(quantile(Latitude, 0.05), 2),
+            median  = round(median(Latitude), 2),
+            q95     = round(quantile(Latitude, 0.95), 2),
+            lat_max = round(max(Latitude), 2),
+            .groups = "drop") %>%
+  kable(caption = "Latitudinal distribution of occupied spawning locations, before and after the collapse")
+
+## biomass-weighted centre of gravity — tests for a directional shift
+cog <- site_year %>% filter(spawn_bio > 0) %>% group_by(Year) %>%
+  summarise(cog_lat = weighted.mean(Latitude, spawn_bio), .groups = "drop") %>%
+  mutate(phase = if_else(Year < BREAK_YEAR, "Pre-collapse", "Post-collapse"))
+tt <- t.test(cog_lat ~ phase, data = cog)
+cat(sprintf("Biomass-weighted centre of gravity: pre %.2f degN, post %.2f degN, difference %.2f deg (t-test P %s)\n",
+            mean(cog$cog_lat[cog$phase == "Pre-collapse"]),
+            mean(cog$cog_lat[cog$phase == "Post-collapse"]),
+            diff(rev(tapply(cog$cog_lat, cog$phase, mean))), fmt_p(tt$p.value)))
+```
+
+---
+
+## 5  Temporal contraction of the spawning season (Supplementary Fig. S1)
+
+The main text reports that spatial contraction was accompanied by temporal contraction, the
+season "compressing from roughly four months to predominantly a single month". The statistic
+behind that statement is computed here from the spawn-record start dates.
+
+```{r season}
+season <- spawn_raw %>%
+  filter(Region == SOG_REGION, StatisticalArea %in% OCC_AREAS, !is.na(StartDate)) %>%
+  mutate(start = suppressWarnings(as.Date(StartDate)),
+         month = as.integer(format(start, "%m")),
+         bio   = rowSums(cbind(Surface, Understory, Macrocystis), na.rm = TRUE)) %>%
+  filter(!is.na(month), bio > 0, Year %in% 1951:2025) %>%
+  mutate(phase = if_else(Year < BREAK_YEAR, "Pre-collapse", "Post-collapse"))
+
+season %>% group_by(phase, month) %>%
+  summarise(biomass = sum(bio), .groups = "drop") %>%
+  group_by(phase) %>% mutate(share = 100*biomass/sum(biomass)) %>%
+  select(phase, month, share) %>%
+  pivot_wider(names_from = phase, values_from = share) %>%
+  arrange(month) %>% mutate(across(where(is.numeric), ~round(., 1))) %>%
+  kable(caption = "Percentage of annual spawn biomass by calendar month, before and after the collapse")
+
+## number of months needed to account for 90% of spawn biomass
+n_months_90 <- season %>% group_by(phase, month) %>%
+  summarise(b = sum(bio), .groups = "drop") %>%
+  group_by(phase) %>% arrange(desc(b), .by_group = TRUE) %>%
+  mutate(cum = cumsum(b)/sum(b)) %>%
+  summarise(n_months = sum(lag(cum, default = 0) < 0.90), .groups = "drop")
+print(n_months_90)
+
+peak <- season %>% group_by(phase, month) %>% summarise(b = sum(bio), .groups = "drop") %>%
+  group_by(phase) %>% mutate(share = b/sum(b)) %>% slice_max(share, n = 1)
+cat(sprintf("\nPeak month share: pre-collapse month %d = %.0f%%; post-collapse month %d = %.0f%%\n",
+            peak$month[peak$phase == "Pre-collapse"], 100*peak$share[peak$phase == "Pre-collapse"],
+            peak$month[peak$phase == "Post-collapse"], 100*peak$share[peak$phase == "Post-collapse"]))
+```
+
+### How the season narrowed
+
+The season was already March-centred before the collapse, so the change is not a shift of
+the peak but the loss of the February and April shoulders. These are the three quantities
+quoted in the Results.
+
+```{r season-narrowing}
+mshare <- season %>% group_by(phase, month) %>%
+  summarise(bio = sum(bio), .groups = "drop") %>%
+  group_by(phase) %>% mutate(share = 100*bio/sum(bio)) %>% ungroup()
+
+for (ph in c("Pre-collapse","Post-collapse")) {
+  s <- mshare %>% filter(phase == ph)
+  cat(sprintf("%-14s months with >= 5%% of spawn biomass: %s | outside March: %.0f%%\n",
+              ph, paste(sort(s$month[s$share >= 5]), collapse = ", "),
+              sum(s$share[s$month != 3])))
+}
+
+## outer envelope: first to last spawn of the year, averaged within era
+env <- season %>% mutate(doy = as.integer(format(start, "%j"))) %>%
+  group_by(phase) %>%
+  summarise(envelope_d = max(doy) - min(doy),
+            spread_10_90 = quantile(doy, .9) - quantile(doy, .1), .groups = "drop")
+print(env)
+```
+
+### Spawning waves within a site-year
+
+A site-year can carry several spawn records. Most are concurrent — 62% of consecutive
+records at the same site-year overlap or share a start date — and those are one spawning
+episode mapped in pieces, which is what the per-site annual maximum removes. Records
+separated by a week or more are a different quantity: they are successive spawning events at
+the same place. Hourston & Haegele (1980) describe exactly this, "two waves of spawning" at
+a site, alongside the individual spawning act.
+
+The count of such waves is confounded two ways, and both are controlled below. Survey method
+changed in 1988, and the season itself shortened, which mechanically leaves less room for a
+second wave. `WAVE_GAP` is the separation in days required to call two records distinct.
+
+```{r spawn-waves}
+WAVE_GAP <- 7
+
+wave_events <- spawn_raw %>%
+  filter(Region == SOG_REGION, StatisticalArea %in% OCC_AREAS, !is.na(StartDate), Year %in% 1951:2025) %>%
+  mutate(start = suppressWarnings(as.Date(StartDate)),
+         end   = suppressWarnings(as.Date(EndDate)),
+         bio   = rowSums(cbind(Surface, Understory, Macrocystis), na.rm = TRUE)) %>%
+  filter(!is.na(start)) %>%   # spawn events, including records without a biomass estimate
+  mutate(end = if_else(is.na(end), start, end)) %>%
+  arrange(LocationCode, Year, start)
+
+count_waves <- function(gap) {
+  wave_events %>% group_by(LocationCode, Year) %>%
+    summarise(Area   = first(StatisticalArea),
+              Method = names(sort(table(Method), decreasing = TRUE))[1],
+              n_rec  = n(),
+              n_waves = 1L + sum(as.numeric(start[-1] - head(end, -1)) >= gap),
+              .groups = "drop") %>%
+    mutate(multi = as.integer(n_waves > 1),
+           post  = as.integer(Year >= BREAK_YEAR))
+}
+
+## annual season breadth, computed across all sites so it is independent of any
+## single site-year's wave count
+breadth <- wave_events %>% mutate(doy = as.integer(format(start, "%j"))) %>%
+  group_by(Year) %>%
+  summarise(season_breadth = quantile(doy, .9) - quantile(doy, .1), .groups = "drop")
+
+wv <- count_waves(WAVE_GAP) %>% left_join(breadth, by = "Year")
+
+cat("Threshold sensitivity, surface surveys only (P that a site-year shows > 1 wave):\n")
+for (g in c(5, 7, 10, 14)) {
+  s <- count_waves(g) %>% filter(Method == "Surface")
+  cat(sprintf("  >= %2d d apart : pre %4.1f%% -> post %4.1f%%\n", g,
+              100*mean(s$multi[s$post == 0]), 100*mean(s$multi[s$post == 1])))
+}
+
+cat(sprintf("\nSeason breadth (10-90%% spread of spawn start): pre %.0f d -> post %.0f d\n",
+            mean(breadth$season_breadth[breadth$Year <  BREAK_YEAR]),
+            mean(breadth$season_breadth[breadth$Year >= BREAK_YEAR])))
+
+## Does the era effect survive the two confounds?
+## n_rec is deliberately NOT a covariate: n_waves is derived from those same
+## records, so adjusting for it conditions on a mediator and inflates the effect.
+cat("\nLogistic models for P(> 1 wave), all methods:\n")
+for (f in c("multi ~ post",
+            "multi ~ post + season_breadth",
+            "multi ~ post + season_breadth + factor(Method)")) {
+  m  <- glm(as.formula(f), data = wv, family = binomial)
+  cf <- summary(m)$coefficients["post", ]
+  cat(sprintf("  %-46s OR = %.2f, P %s\n", f, exp(cf[1]), fmt_p(cf[4])))
+}
+
+m_wave <- glm(multi ~ post + season_breadth + factor(Method), data = wv, family = binomial)
+cf <- summary(m_wave)$coefficients["post", ]
+
+## Quote the descriptive percentages from the surface-only subset, where method is
+## held constant by construction, and the odds ratio from the adjusted model on the
+## full data. Mixing the two - surface percentages beside an all-methods OR - would
+## describe two different subsets in one sentence.
+sf <- wv %>% filter(Method == "Surface")
+cat(sprintf("\nDescriptive (surface only, method constant): pre %.0f%% (n = %d) -> post %.0f%% (n = %d)\n",
+            100*mean(sf$multi[sf$post == 0]), sum(sf$post == 0),
+            100*mean(sf$multi[sf$post == 1]), sum(sf$post == 1)))
+cat(sprintf("Descriptive (all methods, unadjusted):        pre %.0f%% -> post %.0f%%\n",
+            100*mean(wv$multi[wv$post == 0]), 100*mean(wv$multi[wv$post == 1])))
+cat(sprintf("Adjusted for season breadth + method (all data): OR = %.2f, P %s\n",
+            exp(cf[1]), fmt_p(cf[4])))
+
+save_tab(wv %>% count(post, multi) %>% mutate(gap_days = WAVE_GAP), "spawning_waves_by_era")
+```
+
+**What this supports and what it does not.** The decline is robust to the separation
+threshold and survives adjustment for both season breadth and survey method, so it is not
+merely the season shortening and not merely the dive-survey transition. It cannot, however,
+distinguish the same fish returning from a second group arriving: spawn surveys record eggs,
+not individuals. It is a loss of within-season spawning structure at a site, reported
+alongside the temporal contraction rather than as an independent mechanism. Post-collapse
+surface-survey site-years are also fewer and are the subset that did not warrant a dive
+survey, which is why the method-adjusted model is the one quoted.
+
+```{r figS1, fig.width=9, fig.height=6}
+## Supplementary Figure S1 — each point is a spawn event, placed by its start day
+## of year and scaled by biomass, so the compression of the season is visible
+## directly rather than only through the monthly shares tabulated above.
+season_pts <- spawn_raw %>%
+  filter(Region == SOG_REGION, StatisticalArea %in% OCC_AREAS, !is.na(StartDate)) %>%
+  mutate(start  = suppressWarnings(as.Date(StartDate)),
+         doy    = as.integer(format(start, "%j")),
+         bio    = rowSums(cbind(Surface, Understory, Macrocystis), na.rm = TRUE),
+         area_f = factor(as.character(StatisticalArea), levels = names(area_cols))) %>%
+  filter(!is.na(doy), Year %in% 1951:2025, !is.na(area_f))
+
+pS1 <- ggplot(season_pts, aes(Year, doy)) +
+  geom_rect(data = shade_df, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+            inherit.aes = FALSE, fill = "grey85", alpha = 0.45) +
+  band_closure() +
+  geom_point(aes(size = bio, colour = area_f), alpha = 0.65) +
+  scale_size_continuous(name = "Spawning biomass (t)", range = c(0.6, 5.5),
+                        labels = label_number(big.mark = ",")) +
+  scale_colour_manual(values = area_cols, name = "Management area") +
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
+  labs(x = "Year", y = "Day of year") +
+  common_panel_legend(pos = "bottom", just = "center") +
+  guides(colour = guide_legend(override.aes = list(size = 5, alpha = 1), nrow = 1),
+         size   = "none")
+
+save_fig(pS1, "FigureS1_temporal_contraction")
+pS1
+```
+
+---
+
+## 6  Figure 1 — the assembled panels
+
+All six panels of Figure 1 are built here from the derived series, so the figure and the
+statistics above can never diverge. Panels **a** and **b** plot the same `SSB` and
+`occupancy` columns used by every model in this chapter: SSB is the sum of all spawn records
+(the DFO spawn index; §1 of chapter 01) and occupancy is over the `r N_all` historically-used
+sections, counting every recorded spawn, including records without a biomass estimate.
+
+```{r fig1-data}
+## Hysteresis needs the long era labels that carry the year ranges into the legend.
+d_hyst <- d %>%
+  mutate(phase2 = factor(if_else(Year < BREAK_YEAR, PHASE_LEVELS[1], PHASE_LEVELS[2]),
+                         levels = PHASE_LEVELS))
+pre_h  <- d_hyst %>% filter(phase2 == PHASE_LEVELS[1])
+post_h <- d_hyst %>% filter(phase2 == PHASE_LEVELS[2])
+pre_hull  <- pre_h [chull(pre_h$SSBk,  pre_h$occupancy),  ]
+post_hull <- post_h[chull(post_h$SSBk, post_h$occupancy), ]
+
+## Latitudinal extent: occupied locations, with 5th/95th percentile edges smoothed.
+lat_pts <- site_year %>%
+  filter(Year %in% 1951:2025) %>%
+  mutate(area_f = factor(as.character(StatisticalArea), levels = names(area_cols)))
+
+lat_q <- lat_pts %>% group_by(Year) %>%
+  summarise(lat05 = quantile(Latitude, 0.05, na.rm = TRUE),
+            lat95 = quantile(Latitude, 0.95, na.rm = TRUE), .groups = "drop")
+
+g05 <- gam(lat05 ~ s(Year, k = 16), data = lat_q)
+g95 <- gam(lat95 ~ s(Year, k = 10), data = lat_q)
+lat_grid <- tibble(Year = seq(min(lat_q$Year), max(lat_q$Year), length.out = 200))
+.f05 <- predict(g05, lat_grid, se.fit = TRUE)
+.f95 <- predict(g95, lat_grid, se.fit = TRUE)
+lat_edge <- bind_rows(
+  tibble(Year = lat_grid$Year, fit = .f05$fit, se = .f05$se.fit, edge = "q05"),
+  tibble(Year = lat_grid$Year, fit = .f95$fit, se = .f95$se.fit, edge = "q95"))
+
+## Catch by management area, with the TAC overlaid.
+catch_area <- read_csv(file.path(DERIVED, "catch_decomposition.csv"), show_col_types = FALSE) %>%
+  group_by(Year, area) %>%
+  summarise(catch_kt = sum(catch_t, na.rm = TRUE)/1000, .groups = "drop") %>%
+  mutate(area_f = factor(as.character(area), levels = names(area_cols))) %>%
+  filter(!is.na(area_f), Year %in% 1951:2025)
+
+tac <- read_csv(F_TAC, show_col_types = FALSE) %>%
+  rename_with(trimws) %>%
+  transmute(Year = as.numeric(New_Year), TAC_kt = as.numeric(TAC_metric_tons)/1000) %>%
+  filter(!is.na(Year), Year %in% 1951:2025)
+
+## Landed value: nominal and deflated to constant 2024 CAD.
+value_two <- read_excel(F_VALUE, sheet = 1) %>%
+  rename_with(trimws) %>%
+  transmute(Year     = suppressWarnings(as.numeric(Year)),
+            Nominal  = suppressWarnings(as.numeric(value_per_ton)),
+            Real2024 = suppressWarnings(as.numeric(value_per_ton_real2024))) %>%
+  filter(!is.na(Year), Year %in% 1950:2025) %>%
+  group_by(Year) %>% summarise(across(everything(), ~mean(.x, na.rm = TRUE)), .groups = "drop") %>%
+  mutate(across(c(Nominal, Real2024), ~ifelse(is.nan(.x) | .x <= 0, NA_real_, .x)))
+
+cat(sprintf("Fig 1 inputs | SSB %d-%d | catch areas %d | TAC %d yr | value %d yr\n",
+            min(d$Year), max(d$Year), n_distinct(catch_area$area_f),
+            nrow(tac), sum(!is.na(value_two$Real2024))))
+```
+
+```{r fig1-panels, fig.width=16, fig.height=15}
+shade_layer <- geom_rect(data = shade_df,
+                         aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                         inherit.aes = FALSE, fill = "grey85", alpha = 0.45)
+
+## ---- a  Spawning stock biomass ---------------------------------------------
+p1a <- ggplot(d, aes(Year, SSBk)) +
+  shade_layer +
+  geom_line(linewidth = 0.9, lineend = "round") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 10), se = TRUE,
+              colour = "darkblue", fill = "grey75", linewidth = 1) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
+  labs(x = "Year", y = "SSB (×1000 tonnes)") +
+  common_panel
+
+## ---- b  Spawning occupancy --------------------------------------------------
+p1b <- ggplot(d, aes(Year, occupancy)) +
+  shade_layer +
+  geom_line(linewidth = 0.9, lineend = "round") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 10), se = TRUE,
+              colour = "darkblue", fill = "grey75", linewidth = 1) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)),
+                     labels = percent_format(accuracy = 1)) +
+  labs(x = "Year", y = "Spawning occupancy") +
+  common_panel
+
+## ---- c  Biomass-occupancy hysteresis ---------------------------------------
+p1c <- ggplot(d_hyst, aes(SSBk, occupancy)) +
+  geom_polygon(data = pre_hull,  aes(SSBk, occupancy), inherit.aes = FALSE,
+               fill = phase_hull[[1]], alpha = 0.28) +
+  geom_polygon(data = post_hull, aes(SSBk, occupancy), inherit.aes = FALSE,
+               fill = phase_hull[[2]], alpha = 0.22) +
+  geom_path(colour = "grey60", linewidth = 0.4, alpha = 0.55) +
+  geom_point(aes(fill = phase2, colour = phase2), shape = 21, size = 3.4, stroke = 0.5) +
+  scale_fill_manual(values = phase_fill, name = NULL) +
+  scale_colour_manual(values = phase_edge, name = NULL, guide = "none") +
+  scale_x_continuous(labels = label_number(big.mark = ","),
+                     expand = expansion(mult = c(0.02, 0.04))) +
+  scale_y_continuous(labels = percent_format(accuracy = 1),
+                     expand = expansion(mult = c(0.05, 0.15))) +
+  labs(x = "SSB (×1000 tonnes)", y = "Spawning occupancy") +
+  theme_science +
+  theme(legend.position = c(0.98, 0.98), legend.justification = c(1, 1),
+        legend.background = element_rect(fill = alpha("white", 0.6), colour = NA),
+        legend.key = element_blank(), panel.grid = element_blank())
+
+## ---- d  Latitudinal extent --------------------------------------------------
+p1d <- ggplot(lat_pts, aes(Year, Latitude)) +
+  shade_layer +
+  geom_point(aes(size = spawn_bio, colour = area_f), alpha = 0.65) +
+  geom_ribbon(data = lat_edge, aes(x = Year, ymin = fit - 1.96*se, ymax = fit + 1.96*se,
+                                   group = edge),
+              inherit.aes = FALSE, fill = "grey30", alpha = 0.18) +
+  geom_line(data = lat_edge, aes(x = Year, y = fit, group = edge),
+            inherit.aes = FALSE, colour = "grey25", linewidth = 0.9) +
+  scale_size_continuous(name = "Spawning biomass (t)", range = c(0.6, 5.5),
+                        labels = label_number(big.mark = ",")) +
+  scale_colour_manual(values = area_cols, name = "Management area", drop = TRUE) +
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
+  labs(x = "Year", y = "Latitude (°N)") +
+  ## the point cloud fills the panel, so this legend goes outside it
+  common_panel_legend(pos = "bottom", just = "center") +
+  guides(colour = guide_legend(override.aes = list(size = 5, alpha = 1), nrow = 2),
+         size   = "none")
+
+## ---- e  Catch by management area, with TAC ---------------------------------
+p1e <- ggplot(catch_area, aes(Year, catch_kt, fill = area_f)) +
+  shade_layer + band_closure() +
+  geom_area(colour = NA) +
+  geom_line(data = tac, aes(Year, TAC_kt), inherit.aes = FALSE,
+            colour = "#C0392B", linewidth = 1) +
+  scale_fill_manual(values = area_cols, name = "Management area") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
+  labs(x = "Year", y = "Catch (×1000 tonnes)") +
+  common_panel_legend(pos = c(0.99, 0.99), just = c(1, 1)) +
+  guides(fill = guide_legend(nrow = 3))
+
+## ---- f  Landed value per tonne ---------------------------------------------
+p1f <- ggplot(value_two, aes(Year)) +
+  shade_layer + band_closure() +
+  geom_line(aes(y = Nominal/1000),  colour = "grey55", linewidth = 0.9, linetype = "dashed") +
+  geom_line(aes(y = Real2024/1000), colour = "black",  linewidth = 0.9) +
+  annotate("text", x = 1976.5, y = max(value_two$Real2024, na.rm = TRUE)/1000,
+           label = "Herring\nGold Rush", vjust = 0.9, hjust = 1, size = 5.5, lineheight = 0.95) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.22))) +
+  labs(x = "Year", y = "Value per tonne (×1000 CAD)") +
+  common_panel
+
+for (nm in c("a","b","c","d","e","f")) {
+  save_fig(get(paste0("p1", nm)), paste0("Fig1", nm, "_",
+    c(a="SSB", b="occupancy", c="hysteresis", d="latitudinal_extent",
+      e="catch_by_area", f="value_per_tonne")[[nm]]))
+}
+
+fig1 <- (p1a | p1d) / (p1b | p1e) / (p1c | p1f) +
+  plot_annotation(tag_levels = list(c("a","d","b","e","c","f"))) &
+  theme(plot.tag = element_text(size = 26, face = "bold"))
+
+save_fig(fig1, "Figure1_biomass_occupancy_decoupling", width = 18, height = 16)
+fig1
+```
+
+---
+
+## Session information
+
+```{r session}
+sessionInfo()
+```
+
+
+---
+
+## Sensitivity: SSB as per-location annual maxima
+
+Main-text SSB is the sum of all spawn records (DFO spawn index). Because multiple records per
+location-year were far more common before the collapse, the biomass-occupancy model is repeated
+with SSB_max, the sum of per-location annual maxima.
+
+```{r ssb-max-sensitivity}
+ann_s <- read_csv(file.path(DERIVED, "annual_series.csv"), show_col_types = FALSE) %>%
+  mutate(phase = factor(if_else(Year < BREAK_YEAR, "Pre-collapse", "Post-collapse"),
+                        levels = c("Pre-collapse", "Post-collapse")))
+m_max <- lm(occupancy ~ scale(SSB_max) + phase, data = ann_s)
+rng_max <- range(ann_s$SSB_max[ann_s$phase == "Pre-collapse"])
+cat(sprintf("SSB_max sensitivity: SSB P = %.2f | phase P %s | occupancy pre %.0f%% vs post at matched SSB_max %.0f%%\n",
+            summary(m_max)$coefficients["scale(SSB_max)", "Pr(>|t|)"],
+            fmt_p(summary(m_max)$coefficients["phasePost-collapse", "Pr(>|t|)"]),
+            100 * mean(ann_s$occupancy[ann_s$phase == "Pre-collapse"]),
+            100 * mean(ann_s$occupancy[ann_s$phase == "Post-collapse" &
+                                         ann_s$SSB_max >= rng_max[1] & ann_s$SSB_max <= rng_max[2]])))
+loc_multi <- read_csv(file.path(DERIVED, "site_year_spawn_all.csv"), show_col_types = FALSE) %>%
+  mutate(era = if_else(Year < BREAK_YEAR, "pre", "post")) %>% group_by(era) %>%
+  summarise(pct_multi_record = round(100 * mean(n_records > 1)), .groups = "drop")
+print(loc_multi)
+```

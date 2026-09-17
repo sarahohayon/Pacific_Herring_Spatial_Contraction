@@ -1,0 +1,226 @@
+Year,n_sections,n_active,occupancy,rule
+1951,18,13,0.7222222222222222,Spawn biomass > 0 only
+1952,18,12,0.6666666666666666,Spawn biomass > 0 only
+1953,18,9,0.5,Spawn biomass > 0 only
+1954,18,11,0.6111111111111112,Spawn biomass > 0 only
+1955,18,14,0.7777777777777778,Spawn biomass > 0 only
+1956,18,11,0.6111111111111112,Spawn biomass > 0 only
+1957,18,11,0.6111111111111112,Spawn biomass > 0 only
+1958,18,11,0.6111111111111112,Spawn biomass > 0 only
+1959,18,17,0.9444444444444444,Spawn biomass > 0 only
+1960,18,14,0.7777777777777778,Spawn biomass > 0 only
+1961,18,13,0.7222222222222222,Spawn biomass > 0 only
+1962,18,14,0.7777777777777778,Spawn biomass > 0 only
+1963,18,15,0.8333333333333334,Spawn biomass > 0 only
+1964,18,15,0.8333333333333334,Spawn biomass > 0 only
+1965,18,12,0.6666666666666666,Spawn biomass > 0 only
+1966,18,13,0.7222222222222222,Spawn biomass > 0 only
+1967,18,14,0.7777777777777778,Spawn biomass > 0 only
+1968,18,14,0.7777777777777778,Spawn biomass > 0 only
+1969,18,14,0.7777777777777778,Spawn biomass > 0 only
+1970,18,14,0.7777777777777778,Spawn biomass > 0 only
+1971,18,14,0.7777777777777778,Spawn biomass > 0 only
+1972,18,15,0.8333333333333334,Spawn biomass > 0 only
+1973,18,8,0.4444444444444444,Spawn biomass > 0 only
+1974,18,12,0.6666666666666666,Spawn biomass > 0 only
+1975,18,12,0.6666666666666666,Spawn biomass > 0 only
+1976,18,12,0.6666666666666666,Spawn biomass > 0 only
+1977,18,13,0.7222222222222222,Spawn biomass > 0 only
+1978,18,10,0.5555555555555556,Spawn biomass > 0 only
+1979,18,9,0.5,Spawn biomass > 0 only
+1980,18,10,0.5555555555555556,Spawn biomass > 0 only
+1981,18,9,0.5,Spawn biomass > 0 only
+1982,18,10,0.5555555555555556,Spawn biomass > 0 only
+1983,18,9,0.5,Spawn biomass > 0 only
+1984,18,6,0.3333333333333333,Spawn biomass > 0 only
+1985,18,6,0.3333333333333333,Spawn biomass > 0 only
+1986,18,7,0.3888888888888889,Spawn biomass > 0 only
+1987,18,9,0.5,Spawn biomass > 0 only
+1988,18,4,0.2222222222222222,Spawn biomass > 0 only
+1989,18,7,0.3888888888888889,Spawn biomass > 0 only
+1990,18,5,0.2777777777777778,Spawn biomass > 0 only
+1991,18,5,0.2777777777777778,Spawn biomass > 0 only
+1992,18,8,0.4444444444444444,Spawn biomass > 0 only
+1993,18,8,0.4444444444444444,Spawn biomass > 0 only
+1994,18,5,0.2777777777777778,Spawn biomass > 0 only
+1995,18,5,0.2777777777777778,Spawn biomass > 0 only
+1996,18,6,0.3333333333333333,Spawn biomass > 0 only
+1997,18,5,0.2777777777777778,Spawn biomass > 0 only
+1998,18,5,0.2777777777777778,Spawn biomass > 0 only
+1999,18,6,0.3333333333333333,Spawn biomass > 0 only
+2000,18,10,0.5555555555555556,Spawn biomass > 0 only
+2001,18,8,0.4444444444444444,Spawn biomass > 0 only
+2002,18,7,0.3888888888888889,Spawn biomass > 0 only
+2003,18,5,0.2777777777777778,Spawn biomass > 0 only
+2004,18,8,0.4444444444444444,Spawn biomass > 0 only
+2005,18,8,0.4444444444444444,Spawn biomass > 0 only
+2006,18,3,0.16666666666666666,Spawn biomass > 0 only
+2007,18,6,0.3333333333333333,Spawn biomass > 0 only
+2008,18,7,0.3888888888888889,Spawn biomass > 0 only
+2009,18,6,0.3333333333333333,Spawn biomass > 0 only
+2010,18,5,0.2777777777777778,Spawn biomass > 0 only
+2011,18,5,0.2777777777777778,Spawn biomass > 0 only
+2012,18,6,0.3333333333333333,Spawn biomass > 0 only
+2013,18,6,0.3333333333333333,Spawn biomass > 0 only
+2014,18,7,0.3888888888888889,Spawn biomass > 0 only
+2015,18,7,0.3888888888888889,Spawn biomass > 0 only
+2016,18,6,0.3333333333333333,Spawn biomass > 0 only
+2017,18,4,0.2222222222222222,Spawn biomass > 0 only
+2018,18,5,0.2777777777777778,Spawn biomass > 0 only
+2019,18,4,0.2222222222222222,Spawn biomass > 0 only
+2020,18,8,0.4444444444444444,Spawn biomass > 0 only
+2021,18,6,0.3333333333333333,Spawn biomass > 0 only
+2022,18,6,0.3333333333333333,Spawn biomass > 0 only
+2023,18,6,0.3333333333333333,Spawn biomass > 0 only
+2024,18,6,0.3333333333333333,Spawn biomass > 0 only
+2025,18,6,0.3333333333333333,Spawn biomass > 0 only
+1951,19,13,0.6842105263157895,All spawn records
+1952,19,12,0.631578947368421,All spawn records
+1953,19,9,0.47368421052631576,All spawn records
+1954,19,11,0.5789473684210527,All spawn records
+1955,19,14,0.7368421052631579,All spawn records
+1956,19,11,0.5789473684210527,All spawn records
+1957,19,11,0.5789473684210527,All spawn records
+1958,19,11,0.5789473684210527,All spawn records
+1959,19,17,0.8947368421052632,All spawn records
+1960,19,15,0.7894736842105263,All spawn records
+1961,19,14,0.7368421052631579,All spawn records
+1962,19,15,0.7894736842105263,All spawn records
+1963,19,16,0.8421052631578947,All spawn records
+1964,19,16,0.8421052631578947,All spawn records
+1965,19,13,0.6842105263157895,All spawn records
+1966,19,13,0.6842105263157895,All spawn records
+1967,19,15,0.7894736842105263,All spawn records
+1968,19,15,0.7894736842105263,All spawn records
+1969,19,14,0.7368421052631579,All spawn records
+1970,19,15,0.7894736842105263,All spawn records
+1971,19,15,0.7894736842105263,All spawn records
+1972,19,15,0.7894736842105263,All spawn records
+1973,19,8,0.42105263157894735,All spawn records
+1974,19,13,0.6842105263157895,All spawn records
+1975,19,12,0.631578947368421,All spawn records
+1976,19,12,0.631578947368421,All spawn records
+1977,19,13,0.6842105263157895,All spawn records
+1978,19,10,0.5263157894736842,All spawn records
+1979,19,9,0.47368421052631576,All spawn records
+1980,19,10,0.5263157894736842,All spawn records
+1981,19,9,0.47368421052631576,All spawn records
+1982,19,10,0.5263157894736842,All spawn records
+1983,19,9,0.47368421052631576,All spawn records
+1984,19,6,0.3157894736842105,All spawn records
+1985,19,6,0.3157894736842105,All spawn records
+1986,19,7,0.3684210526315789,All spawn records
+1987,19,9,0.47368421052631576,All spawn records
+1988,19,4,0.21052631578947367,All spawn records
+1989,19,7,0.3684210526315789,All spawn records
+1990,19,5,0.2631578947368421,All spawn records
+1991,19,5,0.2631578947368421,All spawn records
+1992,19,9,0.47368421052631576,All spawn records
+1993,19,8,0.42105263157894735,All spawn records
+1994,19,7,0.3684210526315789,All spawn records
+1995,19,7,0.3684210526315789,All spawn records
+1996,19,7,0.3684210526315789,All spawn records
+1997,19,10,0.5263157894736842,All spawn records
+1998,19,5,0.2631578947368421,All spawn records
+1999,19,8,0.42105263157894735,All spawn records
+2000,19,14,0.7368421052631579,All spawn records
+2001,19,8,0.42105263157894735,All spawn records
+2002,19,7,0.3684210526315789,All spawn records
+2003,19,5,0.2631578947368421,All spawn records
+2004,19,8,0.42105263157894735,All spawn records
+2005,19,9,0.47368421052631576,All spawn records
+2006,19,4,0.21052631578947367,All spawn records
+2007,19,6,0.3157894736842105,All spawn records
+2008,19,7,0.3684210526315789,All spawn records
+2009,19,6,0.3157894736842105,All spawn records
+2010,19,5,0.2631578947368421,All spawn records
+2011,19,5,0.2631578947368421,All spawn records
+2012,19,7,0.3684210526315789,All spawn records
+2013,19,6,0.3157894736842105,All spawn records
+2014,19,9,0.47368421052631576,All spawn records
+2015,19,9,0.47368421052631576,All spawn records
+2016,19,9,0.47368421052631576,All spawn records
+2017,19,5,0.2631578947368421,All spawn records
+2018,19,6,0.3157894736842105,All spawn records
+2019,19,9,0.47368421052631576,All spawn records
+2020,19,11,0.5789473684210527,All spawn records
+2021,19,11,0.5789473684210527,All spawn records
+2022,19,9,0.47368421052631576,All spawn records
+2023,19,8,0.42105263157894735,All spawn records
+2024,19,10,0.5263157894736842,All spawn records
+2025,19,10,0.5263157894736842,All spawn records
+1951,19,13,0.6842105263157895,Surveyed spawn records (main analysis)
+1952,19,12,0.631578947368421,Surveyed spawn records (main analysis)
+1953,19,9,0.47368421052631576,Surveyed spawn records (main analysis)
+1954,19,11,0.5789473684210527,Surveyed spawn records (main analysis)
+1955,19,14,0.7368421052631579,Surveyed spawn records (main analysis)
+1956,19,11,0.5789473684210527,Surveyed spawn records (main analysis)
+1957,19,11,0.5789473684210527,Surveyed spawn records (main analysis)
+1958,19,11,0.5789473684210527,Surveyed spawn records (main analysis)
+1959,19,17,0.8947368421052632,Surveyed spawn records (main analysis)
+1960,19,15,0.7894736842105263,Surveyed spawn records (main analysis)
+1961,19,14,0.7368421052631579,Surveyed spawn records (main analysis)
+1962,19,15,0.7894736842105263,Surveyed spawn records (main analysis)
+1963,19,16,0.8421052631578947,Surveyed spawn records (main analysis)
+1964,19,16,0.8421052631578947,Surveyed spawn records (main analysis)
+1965,19,13,0.6842105263157895,Surveyed spawn records (main analysis)
+1966,19,13,0.6842105263157895,Surveyed spawn records (main analysis)
+1967,19,15,0.7894736842105263,Surveyed spawn records (main analysis)
+1968,19,15,0.7894736842105263,Surveyed spawn records (main analysis)
+1969,19,14,0.7368421052631579,Surveyed spawn records (main analysis)
+1970,19,15,0.7894736842105263,Surveyed spawn records (main analysis)
+1971,19,15,0.7894736842105263,Surveyed spawn records (main analysis)
+1972,19,15,0.7894736842105263,Surveyed spawn records (main analysis)
+1973,19,8,0.42105263157894735,Surveyed spawn records (main analysis)
+1974,19,13,0.6842105263157895,Surveyed spawn records (main analysis)
+1975,19,12,0.631578947368421,Surveyed spawn records (main analysis)
+1976,19,12,0.631578947368421,Surveyed spawn records (main analysis)
+1977,19,13,0.6842105263157895,Surveyed spawn records (main analysis)
+1978,19,10,0.5263157894736842,Surveyed spawn records (main analysis)
+1979,19,9,0.47368421052631576,Surveyed spawn records (main analysis)
+1980,19,10,0.5263157894736842,Surveyed spawn records (main analysis)
+1981,19,9,0.47368421052631576,Surveyed spawn records (main analysis)
+1982,19,10,0.5263157894736842,Surveyed spawn records (main analysis)
+1983,19,9,0.47368421052631576,Surveyed spawn records (main analysis)
+1984,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+1985,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+1986,19,7,0.3684210526315789,Surveyed spawn records (main analysis)
+1987,19,9,0.47368421052631576,Surveyed spawn records (main analysis)
+1988,19,4,0.21052631578947367,Surveyed spawn records (main analysis)
+1989,19,7,0.3684210526315789,Surveyed spawn records (main analysis)
+1990,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+1991,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+1992,19,9,0.47368421052631576,Surveyed spawn records (main analysis)
+1993,19,8,0.42105263157894735,Surveyed spawn records (main analysis)
+1994,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+1995,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+1996,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+1997,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+1998,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+1999,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+2000,19,11,0.5789473684210527,Surveyed spawn records (main analysis)
+2001,19,8,0.42105263157894735,Surveyed spawn records (main analysis)
+2002,19,7,0.3684210526315789,Surveyed spawn records (main analysis)
+2003,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+2004,19,8,0.42105263157894735,Surveyed spawn records (main analysis)
+2005,19,9,0.47368421052631576,Surveyed spawn records (main analysis)
+2006,19,3,0.15789473684210525,Surveyed spawn records (main analysis)
+2007,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+2008,19,7,0.3684210526315789,Surveyed spawn records (main analysis)
+2009,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+2010,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+2011,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+2012,19,7,0.3684210526315789,Surveyed spawn records (main analysis)
+2013,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+2014,19,7,0.3684210526315789,Surveyed spawn records (main analysis)
+2015,19,7,0.3684210526315789,Surveyed spawn records (main analysis)
+2016,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+2017,19,4,0.21052631578947367,Surveyed spawn records (main analysis)
+2018,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+2019,19,5,0.2631578947368421,Surveyed spawn records (main analysis)
+2020,19,9,0.47368421052631576,Surveyed spawn records (main analysis)
+2021,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+2022,19,7,0.3684210526315789,Surveyed spawn records (main analysis)
+2023,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+2024,19,6,0.3157894736842105,Surveyed spawn records (main analysis)
+2025,19,6,0.3157894736842105,Surveyed spawn records (main analysis)

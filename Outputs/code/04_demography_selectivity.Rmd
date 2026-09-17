@@ -1,0 +1,463 @@
+---
+title: "04 — Size-selective fishing and the restructuring of population demography"
+subtitle: "Results 2.2: gear selectivity, length-at-age, age-structure change points (Supplementary Fig. S3)"
+author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      dpi = 150, fig.align = "center")
+source("00_setup.R")
+library(mgcv); library(segmented); library(patchwork); library(knitr); library(scales)
+```
+
+```{r load}
+bio_src   <- read_csv(file.path(DERIVED, "biosample_annual_by_source.csv"), show_col_types = FALSE)
+test_age  <- read_csv(file.path(DERIVED, "test_fishery_age.csv"),           show_col_types = FALSE)
+len_age   <- read_csv(file.path(DERIVED, "length_at_age.csv"),              show_col_types = FALSE)
+catchdec  <- read_csv(file.path(DERIVED, "catch_decomposition.csv"),        show_col_types = FALSE)
+```
+
+---
+
+## 1  The fishery transition: season, gear and demographic target
+
+```{r fishery-transition}
+catchdec %>%
+  filter(area %in% BIO_AREAS, fishery %in% c("Reduction","Roe","Food and bait")) %>%
+  group_by(fishery, gear_grp) %>%
+  summarise(catch_kt = round(sum(catch_t, na.rm = TRUE)/1000), .groups = "drop") %>%
+  pivot_wider(names_from = gear_grp, values_from = catch_kt, values_fill = 0) %>%
+  kable(caption = "Total catch (kt) by fishery type and gear, statistical areas 13-18")
+
+roe <- catchdec %>% filter(area %in% BIO_AREAS, fishery == "Roe",
+                           gear_grp %in% c("Seine","Gillnet"), Year %in% 1972:2025)
+gn_share_overall <- with(roe, sum(catch_t[gear_grp == "Gillnet"], na.rm = TRUE) /
+                              sum(catch_t, na.rm = TRUE))
+gn_annual <- roe %>% group_by(Year, gear_grp) %>%
+  summarise(c = sum(catch_t, na.rm = TRUE), .groups = "drop") %>%
+  group_by(Year) %>% summarise(share = c[gear_grp == "Gillnet"]/sum(c), .groups = "drop")
+
+cat(sprintf("Gillnets took %.0f%% of the roe catch 1972-2025; annual share IQR %.0f-%.0f%%\n",
+            100*gn_share_overall,
+            100*quantile(gn_annual$share, .25, na.rm = TRUE),
+            100*quantile(gn_annual$share, .75, na.rm = TRUE)))
+```
+
+---
+
+## 2  Age composition differs among sampling sources (Fig. 2b)
+
+The question is whether the sources are sampling the same age structure or different ones.
+Each row of the data is one source-year, with counts of old (age ≥ 5) and young fish.
+
+**Why not a plain binomial model.** A binomial model assumes every fish is an independent draw,
+so its variance is fixed by the counts. Fish are caught in schools and sampled in sets, so the
+real year-to-year scatter is far larger: residual deviance/df is ~100, i.e. the data are ~100×
+overdispersed. Under that assumption the standard errors are ~10× too small and AIC differences
+become meaningless (the earlier dAIC = 65,403). Two corrections are used instead:
+
+1. **Quasibinomial GAM** — the same model, but the dispersion is estimated from the data rather
+   than fixed at 1, and the common-trend vs source-specific-trend comparison is an F test.
+2. **Binomial GAM with an observation-level random effect** (`s(obs, bs = "re")`) — each
+   source-year gets its own random deviation, which absorbs the extra scatter. With one shared
+   temporal smooth, the source coefficients are the difference in *level* between sources,
+   reported as odds ratios relative to the test fishery (the closest index of the spawning
+   population). AIC is not used with this model: the observation-level effect absorbs source
+   differences, so conditional AIC is unreliable for comparing fixed effects; Wald tests are used.
+
+Caveat: reduction samples (1946-1972) do not overlap in time with the test fishery (1975-), so
+that contrast relies on the shared temporal smooth.
+
+```{r source-gam}
+gd <- bio_src %>%
+  mutate(src = factor(src, levels = c("Reduction","Roe seine","Roe gillnet",
+                                      "Food and bait","Test fishery"))) %>%
+  filter(!is.na(src)) %>%
+  mutate(obs = factor(row_number()))
+
+## plain binomial, kept only to document the overdispersion
+m_source_bin <- gam(cbind(n_old, n_young) ~ src + s(Year, by = src, k = 8),
+                    family = binomial, data = gd, method = "REML")
+cat(sprintf("Source-years: %d | fish: %s | binomial residual deviance/df = %.1f (1 = no overdispersion)\n",
+            nrow(gd), format(sum(gd$n_fish), big.mark = ","),
+            deviance(m_source_bin) / df.residual(m_source_bin)))
+
+## 1  quasibinomial: common trend vs source-specific trends
+## trends are regression splines with a fixed 7 df (k = 8, fx = TRUE), the model drawn in Fig. 2b:
+## with automatic smoothing the ~100x overdispersion flattens every source trend
+m_common <- gam(cbind(n_old, n_young) ~ s(Year, k = 8, fx = TRUE),
+                family = quasibinomial, data = gd)
+m_source <- gam(cbind(n_old, n_young) ~ src + s(Year, by = src, k = 8, fx = TRUE),
+                family = quasibinomial, data = gd)
+f_src <- anova(m_common, m_source, test = "F")
+cat(sprintf("Quasibinomial: dispersion = %.1f | source-specific vs common trend F = %.1f, P %s\n",
+            summary(m_source)$scale, f_src$F[2], fmt_p(f_src$`Pr(>F)`[2])))
+cat(sprintf("Deviance explained: common %.1f%%, source-specific %.1f%%\n",
+            100*summary(m_common)$dev.expl, 100*summary(m_source)$dev.expl))
+
+## 2  shared trend + source levels + observation-level random effect: odds ratios vs test fishery
+gd_or <- gd %>% mutate(src = relevel(src, ref = "Test fishery"))
+m_level <- gam(cbind(n_old, n_young) ~ src + s(Year, k = 8) + s(obs, bs = "re"),
+               family = binomial, data = gd_or, method = "REML")
+pt <- summary(m_level)$p.table[-1, , drop = FALSE]
+src_or <- tibble(Source = sub("^src", "", rownames(pt)),
+                 `OR vs test fishery` = exp(pt[, 1]),
+                 lower = exp(pt[, 1] - 1.96 * pt[, 2]),
+                 upper = exp(pt[, 1] + 1.96 * pt[, 2]),
+                 P = pt[, 4])
+save_tab(src_or, "prop_old_source_odds_ratios")
+kable(src_or, digits = c(0, 2, 2, 2, 4),
+      caption = "Odds of an old fish (age >= 5) relative to the test fishery (shared trend, observation-level random effect)")
+```
+
+```{r source-summaries}
+src_summary <- gd %>% group_by(src) %>%
+  summarise(years   = paste(range(Year), collapse = "-"),
+            n_years = n(),
+            prop_old_count  = sprintf("%.2f +/- %.2f", mean(prop_old_n), sd(prop_old_n)),
+            prop_old_weight = sprintf("%.2f +/- %.2f", mean(prop_old_wt, na.rm = TRUE),
+                                      sd(prop_old_wt, na.rm = TRUE)),
+            .groups = "drop")
+save_tab(src_summary, "prop_old_by_sampling_source")
+kable(src_summary,
+      caption = "Proportion of old fish (age >= 5) by sampling source, mean +/- SD across years")
+
+## the roe-gillnet trajectory quoted in the Results
+rg <- gd %>% filter(src == "Roe gillnet") %>% arrange(Year)
+cat(sprintf("Roe gillnet: %.2f in %d rising to %.2f by %d; mean over 1980-2024 = %.2f +/- %.2f\n",
+            rg$prop_old_n[1], rg$Year[1],
+            max(rg$prop_old_n[rg$Year <= 1980]), rg$Year[which.max(replace(rg$prop_old_n, rg$Year > 1980, NA))],
+            mean(rg$prop_old_n[rg$Year >= 1980]), sd(rg$prop_old_n[rg$Year >= 1980])))
+
+## fold-change in selectivity, by weight
+red_wt <- gd %>% filter(src == "Reduction")   %>% pull(prop_old_wt)
+gil_wt <- gd %>% filter(src == "Roe gillnet") %>% pull(prop_old_wt)
+cat(sprintf("By weight: reduction %.2f +/- %.2f -> roe gillnet %.2f +/- %.2f (%.1f-fold)\n",
+            mean(red_wt, na.rm = TRUE), sd(red_wt, na.rm = TRUE),
+            mean(gil_wt, na.rm = TRUE), sd(gil_wt, na.rm = TRUE),
+            mean(gil_wt, na.rm = TRUE)/mean(red_wt, na.rm = TRUE)))
+```
+
+---
+
+## 3  Length-at-age (Fig. 2c)
+
+```{r length-gam}
+la <- len_age %>% mutate(age_f = factor(age))
+m_len_common <- gam(mean_len_mm ~ age_f + s(Year, k = 8), weights = n,
+                    data = la, method = "REML")
+m_len_byage  <- gam(mean_len_mm ~ age_f + s(Year, by = age_f, k = 8), weights = n,
+                    data = la, method = "REML")
+cat(sprintf("Length-at-age: common smooth AIC = %.0f, age-specific smooths AIC = %.0f (dAIC = %.0f)\n",
+            AIC(m_len_common), AIC(m_len_byage), AIC(m_len_common) - AIC(m_len_byage)))
+
+## change in mean length-at-age between eras, per age class
+la %>% mutate(era = case_when(Year <= 1979 ~ "<=1979",
+                              Year <= 1983 ~ "1980-1983",
+                              TRUE         ~ ">=1984")) %>%
+  group_by(age, era) %>%
+  summarise(mean_cm = round(weighted.mean(mean_len_mm, n)/10, 1), .groups = "drop") %>%
+  pivot_wider(names_from = era, values_from = mean_cm) %>%
+  mutate(`change 1980-83 vs <=1979 (cm)` = `1980-1983` - `<=1979`,
+         `change >=1984 vs <=1979 (cm)`  = `>=1984`   - `<=1979`) %>%
+  kable(caption = "Mean length-at-age (cm) by age class and era, sample-size weighted")
+```
+
+---
+
+## 4  Test-fishery age structure: the three-phase contrast
+
+The test fishery began in 1975 and samples during the spawning season, and so is the closest
+available fishery-independent index of the spring spawning population. Mean age and the
+proportion of old fish are contrasted across three phases: pre-collapse (≤ 1983), the
+collapse itself (1984–1986) and the post-collapse period (≥ 1987).
+
+A one-way ANOVA is used rather than a change-point test because the trajectory is a drop
+**and a partial recovery**, which a single-breakpoint model cannot represent; on mean age the
+change-point test returns a false negative for exactly that reason (Section 5).
+
+```{r three-phase}
+ta <- test_age %>% mutate(phase = factor(PHASE3(Year),
+                                         levels = c("Pre-collapse","Collapse","Post-collapse")))
+
+phase_test <- function(var, label) {
+  f  <- as.formula(paste(var, "~ phase"))
+  a  <- aov(f, data = ta); s <- summary(a)[[1]]
+  mu <- ta %>% group_by(phase) %>%
+    summarise(m = mean(.data[[var]]), sd = sd(.data[[var]]), n = n(), .groups = "drop")
+  cat(sprintf("\n== %s ==\n", label))
+  for (i in seq_len(nrow(mu)))
+    cat(sprintf("  %-14s %.2f +/- %.2f (n = %d years)\n",
+                mu$phase[i], mu$m[i], mu$sd[i], mu$n[i]))
+  cat(sprintf("  ANOVA: F(%d,%d) = %.2f, P %s\n",
+              s$Df[1], s$Df[2], s$`F value`[1], fmt_p(s$`Pr(>F)`[1])))
+  tibble(Metric = label,
+         `Pre-collapse`  = sprintf("%.2f +/- %.2f", mu$m[1], mu$sd[1]),
+         `Collapse (1984-1986)` = sprintf("%.2f +/- %.2f", mu$m[2], mu$sd[2]),
+         `Post-collapse` = sprintf("%.2f +/- %.2f", mu$m[3], mu$sd[3]),
+         df = sprintf("%d, %d", s$Df[1], s$Df[2]),
+         F  = round(s$`F value`[1], 2),
+         P  = signif(s$`Pr(>F)`[1], 3))
+}
+
+three_phase <- bind_rows(
+  phase_test("mean_age",  "Mean age (years)"),
+  phase_test("prop_age5", "Proportion age >= 5"),
+  phase_test("prop_age4", "Proportion age >= 4"),
+  phase_test("prop_juv",  "Proportion age 1-3"))
+save_tab(three_phase, "test_fishery_three_phase_contrasts")
+kable(three_phase, caption = "Test-fishery age structure across the three phases (one-way ANOVA)")
+
+cat(sprintf("\nTest-fishery series: %d years, %d-%d\n",
+            nrow(ta), min(ta$Year), max(ta$Year)))
+```
+
+---
+
+## 5  Change-point analysis of age structure (Supplementary Fig. S3)
+
+Piecewise regression with a single breakpoint estimated from a 1986 starting value; the
+Davies test asks whether a change in slope is present at all. Proportions are fitted as
+binomial models weighted by the number of aged fish.
+
+```{r changepoints, fig.width=11, fig.height=13}
+wt_age <- ta$n_fish
+
+fit_cp <- function(model, label) {
+  seg <- try(segmented(model, seg.Z = ~Year, psi = list(Year = 1986)), silent = TRUE)
+  if (inherits(seg, "try-error")) return(NULL)
+  ps <- summary(seg)$psi
+  dv <- tryCatch(davies.test(model, ~Year), error = function(e) NULL)
+  list(seg = seg,
+       row = tibble(Metric = label,
+                    `Break year` = round(ps[, "Est."], 1),
+                    SE           = round(ps[, "St.Err"], 2),
+                    `95% CI`     = sprintf("%.1f-%.1f",
+                                           ps[,"Est."] - 1.96*ps[,"St.Err"],
+                                           ps[,"Est."] + 1.96*ps[,"St.Err"]),
+                    `Davies P`   = if (is.null(dv)) NA_real_ else signif(dv$p.value, 3)),
+       fitted = if (inherits(model, "glm") && family(model)$family == "binomial")
+                  fitted(seg, type = "response") else fitted(seg))
+}
+
+m_mean  <- lm(mean_age ~ Year, data = ta)
+m_a6    <- glm(prop_age6 ~ Year, family = binomial, data = ta, weights = wt_age)
+m_a5    <- glm(prop_age5 ~ Year, family = binomial, data = ta, weights = wt_age)
+m_a4    <- glm(prop_age4 ~ Year, family = binomial, data = ta, weights = wt_age)
+m_juv   <- glm(prop_juv  ~ Year, family = binomial, data = ta, weights = wt_age)
+
+cps <- list(
+  `Mean age`            = fit_cp(m_mean, "Mean age (years)"),
+  `Proportion age >= 6` = fit_cp(m_a6,   "Proportion age >= 6"),
+  `Proportion age >= 5` = fit_cp(m_a5,   "Proportion age >= 5"),
+  `Proportion age >= 4` = fit_cp(m_a4,   "Proportion age >= 4"),
+  `Proportion age 1-3`  = fit_cp(m_juv,  "Proportion age 1-3"))
+
+cp_tab <- map_dfr(cps, "row")
+save_tab(cp_tab, "age_structure_changepoints")
+kable(cp_tab, caption = "Change-point analysis of test-fishery age structure (segmented regression, Davies test)")
+```
+
+```{r cp-figure, fig.width=10, fig.height=12}
+yvars <- c("mean_age","prop_age6","prop_age5","prop_age4","prop_juv")
+ylabs <- c("Mean age (years)","Proportion age ≥ 6","Proportion age ≥ 5",
+           "Proportion age ≥ 4","Proportion age 1–3")
+
+## Panel a (mean age) shows the three-phase contrast reported in the Results, not a change
+## point: mean age falls and then partially recovers, so a single break describes it poorly
+## and the Davies test does not reject. Panels b-e keep the change-point fits.
+ph_means <- ta %>%
+  mutate(ph = factor(PHASE3(Year), levels = c("Pre-collapse","Collapse","Post-collapse"))) %>%
+  group_by(ph) %>%
+  summarise(m = mean(mean_age), se = sd(mean_age)/sqrt(n()),
+            x0 = min(Year), x1 = max(Year), .groups = "drop")
+
+panels <- map(seq_along(cps), function(i) {
+  cp <- cps[[i]]; v <- yvars[i]
+  bp <- as.numeric(summary(cp$seg)$psi[, "Est."])
+  dv <- cp$row$`Davies P`
+  p <- ggplot(ta, aes(Year, .data[[v]])) +
+    band_postcoll(max(ta$Year)) + band_closure() +
+    geom_line(colour = "grey35", linewidth = 0.7) +
+    geom_point(aes(size = n_fish), colour = "grey30", alpha = 0.7, shape = 16)
+  if (i == 1) {
+    p <- p +
+      geom_rect(data = ph_means, inherit.aes = FALSE,
+                aes(xmin = x0, xmax = x1, ymin = m - se, ymax = m + se),
+                fill = col_old, alpha = 0.15) +
+      geom_segment(data = ph_means, inherit.aes = FALSE,
+                   aes(x = x0, xend = x1, y = m, yend = m),
+                   colour = col_old, linewidth = 1.2) +
+      geom_text(data = ph_means, inherit.aes = FALSE,
+                aes(x = (x0 + x1)/2,
+                    y = if_else(ph == "Collapse", m - se, m + se),
+                    vjust = if_else(ph == "Collapse", 1.8, -0.8),
+                    label = sprintf("%.2f", m)),
+                size = 3.4, colour = col_old) +
+      annotate("text", x = -Inf, y = Inf, hjust = -0.08, vjust = 1.5, size = 3.4,
+               label = "three-phase means \u00b1 SE (pre <= 1983, collapse 1984-1986, post >= 1987)")
+  } else {
+    p <- p +
+      geom_line(aes(y = cp$fitted), colour = col_old, linewidth = 1.1) +
+      geom_vline(xintercept = bp, linetype = "dashed", colour = "grey25") +
+      annotate("text", x = -Inf, y = Inf, hjust = -0.08, vjust = 1.5, size = 3.4,
+               label = sprintf("break %.0f; Davies P %s", bp,
+                               if (is.na(dv)) "n/a" else if (dv < 1e-4) "< 0.0001"
+                               else sprintf("= %.4f", dv)))
+  }
+  p +
+    scale_size_area(name = "Fish aged", max_size = 4, labels = label_number(big.mark = ",")) +
+    labs(x = NULL, y = ylabs[i]) +
+    theme_herring(11) +
+    theme(legend.position = if (i == 1) c(0.99, 0.02) else "none",
+          legend.justification = c(1, 0))
+})
+
+figS3 <- wrap_plots(panels, ncol = 1) +
+  plot_annotation(tag_levels = "a",
+    title = "Supplementary Figure S3. Age structure of the Strait of Georgia test fishery",
+    theme = theme(plot.title = element_text(face = "bold", size = 12)))
+save_fig(figS3, "FigureS3_age_structure_changepoints", width = 9, height = 14)
+figS3
+```
+
+**Reading the panels.** The break in the proportion metrics falls at 1985–1986 under every
+definition of old fish, and at the same date in the mirror-image rise of juveniles and
+first-time spawners. Mean age is the one metric on which the change-point test is
+uninformative: it drops and then partially recovers, so a single change in slope describes
+it poorly and the Davies test does not reject. That is why panel a shows the three-phase
+contrast reported in Section 4 (pre-collapse, the 1984-1986 collapse years and post-collapse)
+rather than a change-point fit.
+
+---
+
+## 6  Figure 2 — the assembled panels
+
+The four panels are built from the same objects the statistics above are computed from:
+`catchdec` (a), `gd` (b), `la` (c) and `ta` (d). Every panel carries the same two bands —
+red for the 1968–1971 closure, grey for the post-collapse era.
+
+```{r fig2-panels, fig.width=16, fig.height=11}
+shade_layer <- geom_rect(data = shade_df,
+                         aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                         inherit.aes = FALSE, fill = "grey85", alpha = 0.45)
+
+## ---- a  Catch by fishery type and gear -------------------------------------
+fg <- catchdec %>%
+  filter(area %in% OCC_AREAS, Year %in% 1951:2025) %>%
+  mutate(cat = case_when(
+    fishery == "Reduction"                        ~ "Reduction",
+    fishery == "Roe" & gear_grp == "Gillnet"      ~ "Roe - Gillnet",
+    fishery == "Roe" & gear_grp == "Seine"        ~ "Roe - Seine",
+    fishery == "Roe"                              ~ "Roe - Seine",
+    TRUE                                          ~ "Food and bait")) %>%
+  group_by(Year, cat) %>%
+  summarise(catch_kt = sum(catch_t, na.rm = TRUE)/1000, .groups = "drop") %>%
+  mutate(cat = factor(cat, levels = names(fishery_cols)))
+
+p2a <- ggplot(fg, aes(Year, catch_kt, fill = cat)) +
+  shade_layer + band_closure() +
+  geom_col(width = 0.9) +
+  scale_fill_manual(values = fishery_cols, name = NULL) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
+  labs(x = "Year", y = "Catch (×1000 tonnes)") +
+  common_panel_legend(pos = c(0.99, 0.99), just = c(1, 1)) +
+  guides(fill = guide_legend(nrow = 2))
+
+## ---- b  Proportion old by sampling source ----------------------------------
+p2b <- ggplot(gd, aes(Year, prop_old_n, colour = src)) +
+  shade_layer + band_closure() +
+  geom_line(linewidth = 0.7, alpha = 0.55) +
+  geom_point(size = 1.6, alpha = 0.75) +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 8), se = FALSE, linewidth = 1.3) +
+  scale_colour_manual(values = src_cols, name = NULL) +
+  scale_y_continuous(labels = percent_format(accuracy = 1),
+                     expand = expansion(mult = c(0.03, 0.12))) +
+  labs(x = "Year", y = "Proportion age ≥ 5") +
+  common_panel_legend(pos = c(0.01, 0.99), just = c(0, 1)) +
+  guides(colour = guide_legend(nrow = 2, override.aes = list(size = 4, linewidth = 1.4)))
+
+## ---- c  Length-at-age ------------------------------------------------------
+age_pal <- setNames(viridisLite::viridis(length(sort(unique(la$age))),
+                                         option = "C", end = 0.85),
+                    paste("Age", sort(unique(la$age))))
+la_p <- la %>% mutate(age_lbl = factor(paste("Age", age), levels = names(age_pal)))
+
+## Age 8 is recorded in 15 years spanning 1958-2001 with a 22-year gap, and age 9
+## in a single year. A loess fitted to those interpolates straight across the gap
+## and produces a trend that is an artefact of the gap, not of growth. Trend lines
+## are therefore drawn only for age classes with a long, reasonably continuous
+## run; the raw series is kept for every age class.
+age_cover <- la_p %>% group_by(age_lbl) %>%
+  summarise(n_years = n_distinct(Year),
+            max_gap = max(diff(sort(unique(Year))), na.rm = TRUE), .groups = "drop")
+well_sampled <- age_cover %>% filter(n_years >= 30, max_gap <= 15) %>% pull(age_lbl)
+cat("Trend lines drawn for:", paste(well_sampled, collapse = ", "), "\n")
+
+p2c <- ggplot(la_p, aes(Year, mean_len_mm/10, colour = age_lbl)) +
+  shade_layer + band_closure() +
+  geom_line(aes(linetype = data_source), linewidth = 0.5, alpha = 0.6) +
+  geom_point(size = 1.2, alpha = 0.6) +
+  geom_smooth(data = filter(la_p, age_lbl %in% well_sampled),
+              aes(group = age_lbl), method = "loess", span = 0.5,
+              se = FALSE, linewidth = 1.1) +
+  scale_colour_manual(values = age_pal, name = "Age class") +
+  scale_linetype_manual(values = c("Reduction fishery" = "dashed",
+                                   "Test fishery" = "solid"), name = NULL, guide = "none") +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.1))) +
+  labs(x = "Year", y = "Mean length (cm)") +
+  common_panel_legend(pos = "bottom", just = "center") +
+  guides(colour = guide_legend(nrow = 1, override.aes = list(size = 4, linewidth = 1.4)))
+
+## ---- d  Proportion old in the test fishery ---------------------------------
+## The statistic reported in the text is the three-phase contrast, not a trend,
+## so the phase means are drawn directly rather than a smooth that averages the
+## collapse dip away.
+phase_means <- ta %>% group_by(phase) %>%
+  summarise(m = mean(prop_age5), x0 = min(Year), x1 = max(Year), .groups = "drop")
+
+p2d <- ggplot(ta, aes(Year, prop_age5)) +
+  shade_layer + band_closure() +
+  geom_line(colour = "grey35", linewidth = 0.7) +
+  geom_point(aes(size = n_fish), colour = col_old, alpha = 0.75) +
+  geom_segment(data = phase_means,
+               aes(x = x0, xend = x1, y = m, yend = m),
+               inherit.aes = FALSE, colour = col_old, linewidth = 1.6) +
+  geom_text(data = phase_means, aes(x = (x0 + x1)/2, y = m, label = sprintf("%.2f", m)),
+            inherit.aes = FALSE, vjust = -0.8, size = 5.5, colour = col_old) +
+  scale_size_area(name = "Fish aged", max_size = 6, labels = label_number(big.mark = ",")) +
+  scale_y_continuous(labels = percent_format(accuracy = 1),
+                     expand = expansion(mult = c(0.05, 0.15))) +
+  labs(x = "Year", y = "Proportion age ≥ 5 (test fishery)") +
+  common_panel_legend(pos = c(0.99, 0.99), just = c(1, 1)) +
+  guides(size = guide_legend(nrow = 1))
+
+for (nm in c("a","b","c","d")) {
+  save_fig(get(paste0("p2", nm)), paste0("Fig2", nm, "_",
+    c(a="catch_by_fishery_gear", b="prop_old_by_source",
+      c="length_at_age", d="prop_old_test_fishery")[[nm]]))
+}
+
+fig2 <- (p2a | p2b) / (p2c | p2d) +
+  plot_annotation(tag_levels = "a") &
+  theme(plot.tag = element_text(size = 26, face = "bold"))
+
+save_fig(fig2, "Figure2_size_selective_demography", width = 18, height = 12)
+fig2
+```
+
+---
+
+## Session information
+
+```{r session}
+sessionInfo()
+```

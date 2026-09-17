@@ -1,0 +1,12 @@
+Metric,Family,PC1_loading,PC2_loading,r_with_occupancy
+95% kernel utilisation area,Extent,0.37,0.01,0.83
+Section occupancy,Extent,0.35,0.12,1
+50% kernel utilisation area,Extent,0.35,0.11,0.87
+Latitudinal range,Extent,0.35,0.12,0.77
+Convex-hull area,Extent,0.34,0.05,0.91
+Mean pairwise distance among sections,Extent,0.31,0.25,0.6
+Edge radius,Extent,0.31,0.27,0.61
+Centroid dispersion,Extent,0.3,0.15,0.66
+Gini coefficient of section biomass,Concentration,0.26,0.52,-0.74
+Moran's I of section biomass,Concentration,0.18,0.24,-0.37
+Core concentration (top 25% of sections),Concentration,0.03,0.69,0.03

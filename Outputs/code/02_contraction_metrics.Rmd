@@ -1,0 +1,242 @@
+---
+title: "02 — Spatial contraction metrics and choice of response variable"
+subtitle: "Eleven candidate metrics, PCA, and the justification for section occupancy (Supplementary Table S6)"
+author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      dpi = 150, fig.align = "center")
+source("00_setup.R")
+library(sf); library(adehabitatHR); library(spdep); library(geosphere)
+library(ineq); library(rnaturalearth); library(knitr); library(patchwork)
+suppressWarnings(sf::sf_use_s2(FALSE))
+```
+
+Before modelling we verify that **section occupancy is a representative measure of spatial
+contraction**, rather than one arbitrary choice among many. Eleven established metrics of
+the annual spawning distribution are computed from the same per-site annual maxima built in
+`01`, spanning two conceptually distinct families:
+
+* **extent** — how much of the Strait spawning covers;
+* **concentration** — how evenly biomass is divided among the areas that are used.
+
+A PCA of the standardised metrics separates the two families, and the loadings on the
+dominant axis identify which metrics carry the shared contraction signal. This chunk
+produces **Supplementary Table S6**.
+
+```{r load}
+site_year <- read_csv(file.path(DERIVED, "site_year_spawn.csv"), show_col_types = FALSE)
+sy        <- read_csv(file.path(DERIVED, "section_year.csv"),   show_col_types = FALSE)
+annual    <- read_csv(file.path(DERIVED, "annual_series.csv"),  show_col_types = FALSE)
+
+## mean coordinates per location and per section
+loc_xy <- site_year %>% group_by(LocationCode) %>%
+  summarise(lon = mean(Longitude, na.rm = TRUE), lat = mean(Latitude, na.rm = TRUE),
+            .groups = "drop")
+sec_xy <- site_year %>% group_by(Section) %>%
+  summarise(lon = mean(Longitude, na.rm = TRUE), lat = mean(Latitude, na.rm = TRUE),
+            .groups = "drop")
+
+site_xy <- site_year %>% left_join(loc_xy, by = "LocationCode")
+syx     <- sy        %>% left_join(sec_xy, by = "Section")
+```
+
+---
+
+## 1  Location-level metrics
+
+Kernel utilisation areas (50% and 95%) use a reference bandwidth and are clipped to water,
+so that a distribution hugging a coastline is not credited with area over land. Convex-hull
+area and latitudinal range are the two simplest extent measures.
+
+```{r kde}
+water_sog <- tryCatch({
+  land <- ne_states(country = c("Canada","United States of America"),
+                    returnclass = "sf") %>% st_transform(3005)
+  bb <- st_bbox(c(xmin = -125.5, xmax = -122.5, ymin = 48.2, ymax = 50.5),
+                crs = st_crs(4326)) %>% st_as_sfc() %>% st_transform(3005)
+  st_difference(bb, st_union(land))
+}, error = function(e) NULL)
+
+## every site_year row is a recorded spawn (presence), with or without a biomass estimate
+pts <- site_xy %>%
+  st_as_sf(coords = c("lon","lat"), crs = 4326) %>% st_transform(3005)
+
+kde <- pts %>% group_split(Year) %>% map_df(function(.x) {
+  yr <- unique(.x$Year)
+  if (nrow(.x) < 5) return(tibble(Year = yr, kde50_km2 = NA_real_, kde95_km2 = NA_real_))
+  kd <- tryCatch(kernelUD(as(.x, "Spatial"), h = "href"), error = function(e) NULL)
+  ar <- function(p) {
+    v <- tryCatch(getverticeshr(kd, percent = p), error = function(e) NULL)
+    if (is.null(v)) return(NA_real_)
+    vs <- st_as_sf(v)
+    if (!is.null(water_sog)) vs <- tryCatch(st_intersection(vs, water_sog), error = function(e) vs)
+    if (nrow(vs) == 0) NA_real_ else sum(as.numeric(st_area(vs)))/1e6
+  }
+  tibble(Year = yr,
+         kde50_km2 = if (is.null(kd)) NA_real_ else ar(50),
+         kde95_km2 = if (is.null(kd)) NA_real_ else ar(95))
+})
+
+hull <- pts %>% group_by(Year) %>% summarise(g = st_union(geometry), .groups = "drop") %>%
+  mutate(hull_area_km2 = as.numeric(st_area(st_convex_hull(g)))/1e6) %>%
+  st_drop_geometry() %>% select(Year, hull_area_km2)
+
+latr <- site_xy %>% group_by(Year) %>%
+  summarise(lat_range = max(lat, na.rm = TRUE) - min(lat, na.rm = TRUE), .groups = "drop")
+```
+
+---
+
+## 2  Section-level metrics
+
+```{r section-metrics}
+f_core <- function(df, f = .25) {
+  df <- df %>% filter(biomass > 0) %>% arrange(desc(biomass))
+  if (!nrow(df)) return(NA_real_)
+  k <- max(1, ceiling(f*nrow(df))); sum(df$biomass[1:k])/sum(df$biomass)
+}
+f_mpd <- function(df) {
+  df <- df %>% filter(spawned) %>% drop_na(lon, lat)
+  if (nrow(df) < 2) return(NA_real_)
+  Dm <- distm(df[, c("lon","lat")], fun = distHaversine)/1000
+  mean(Dm[upper.tri(Dm)], na.rm = TRUE)
+}
+f_disp <- function(df) {
+  df <- df %>% filter(biomass > 0) %>% drop_na(lon, lat)
+  if (!nrow(df)) return(NA_real_)
+  w  <- df$biomass; cx <- weighted.mean(df$lon, w); cy <- weighted.mean(df$lat, w)
+  d  <- distHaversine(df[, c("lon","lat")], c(cx, cy))/1000
+  mu <- weighted.mean(d, w); sqrt(weighted.mean((d - mu)^2, w))
+}
+f_mor <- function(df, k = 4) {
+  df <- df %>% drop_na(lon, lat)
+  if (nrow(df) < (k + 2)) return(NA_real_)
+  knn <- knearneigh(as.matrix(df[, c("lon","lat")]), k = k)
+  lw  <- nb2listw(knn2nb(knn), style = "W", zero.policy = TRUE)
+  unname(moran.test(df$biomass, lw, zero.policy = TRUE)$estimate[["Moran I statistic"]])
+}
+
+## long-term biomass centroid, for the edge-radius metric
+hc <- syx %>% filter(biomass > 0) %>% drop_na(lon, lat) %>%
+  summarise(hx = weighted.mean(lon, biomass), hy = weighted.mean(lat, biomass))
+
+sec_m <- syx %>% group_by(Year) %>% group_modify(~ tibble(
+  core25           = f_core(.x),
+  gini             = ineq::Gini(.x$biomass),
+  mean_pairwise_km = f_mpd(.x),
+  sd_dist_km       = f_disp(.x),
+  moranI           = f_mor(.x),
+  edge_radius_km   = {
+    d <- .x %>% filter(spawned) %>% drop_na(lon, lat)
+    if (!nrow(d)) NA_real_ else max(distHaversine(d[, c("lon","lat")], c(hc$hx, hc$hy))/1000)
+  })) %>% ungroup()
+
+metrics_all <- reduce(list(annual %>% select(Year, occupancy), kde, hull, latr, sec_m),
+                      left_join, by = "Year") %>% arrange(Year)
+write_csv(metrics_all, file.path(DERIVED, "contraction_metrics_ALL.csv"))
+glimpse(metrics_all)
+```
+
+---
+
+## 3  PCA and correlations — Supplementary Table S6
+
+```{r pca}
+mcols <- c("occupancy","kde50_km2","kde95_km2","hull_area_km2","lat_range",
+           "mean_pairwise_km","sd_dist_km","edge_radius_km","core25","gini","moranI")
+dd <- metrics_all %>% select(all_of(mcols)) %>% drop_na()
+pc <- prcomp(scale(dd))
+
+var_pc <- summary(pc)$importance[2, ]
+cat(sprintf("PC1 = %.0f%% of variance, PC2 = %.0f%% (n = %d complete years)\n",
+            100*var_pc[1], 100*var_pc[2], nrow(dd)))
+
+metric_labels <- c(
+  occupancy        = "Section occupancy",
+  kde50_km2        = "50% kernel utilisation area",
+  kde95_km2        = "95% kernel utilisation area",
+  hull_area_km2    = "Convex-hull area",
+  lat_range        = "Latitudinal range",
+  mean_pairwise_km = "Mean pairwise distance among sections",
+  sd_dist_km       = "Centroid dispersion",
+  edge_radius_km   = "Edge radius",
+  core25           = "Core concentration (top 25% of sections)",
+  gini             = "Gini coefficient of section biomass",
+  moranI           = "Moran's I of section biomass")
+
+metric_family <- c(rep("Extent", 8), rep("Concentration", 3))
+names(metric_family) <- c("occupancy","kde50_km2","kde95_km2","hull_area_km2","lat_range",
+                          "mean_pairwise_km","sd_dist_km","edge_radius_km",
+                          "core25","gini","moranI")
+
+tabS6 <- tibble(
+  metric       = mcols,
+  Metric       = metric_labels[mcols],
+  Family       = metric_family[mcols],
+  PC1_loading  = round(abs(pc$rotation[, 1]), 2),
+  PC2_loading  = round(abs(pc$rotation[, 2]), 2),
+  r_with_occupancy = round(sapply(mcols, function(m) cor(dd[[m]], dd$occupancy)), 2)) %>%
+  arrange(desc(PC1_loading)) %>% select(-metric)
+
+save_tab(tabS6, "TableS6_contraction_metric_loadings")
+kable(tabS6, caption = sprintf(
+  "Supplementary Table S6. Contraction metrics: absolute PC1 and PC2 loadings and correlation with section occupancy (n = %d years). PC1 explains %.0f%% of variance and PC2 %.0f%%.",
+  nrow(dd), 100*var_pc[1], 100*var_pc[2]))
+```
+
+```{r pca-note}
+occ_r <- tabS6$r_with_occupancy[tabS6$Metric == "Section occupancy"]
+ext_r <- tabS6 %>% filter(Family == "Extent", Metric != "Section occupancy") %>%
+  pull(r_with_occupancy)
+cat(sprintf("Occupancy PC1 loading = %.2f (rank %d of %d)\n",
+            tabS6$PC1_loading[tabS6$Metric == "Section occupancy"],
+            which(tabS6$Metric == "Section occupancy"), nrow(tabS6)))
+cat(sprintf("Correlation of occupancy with the other extent metrics: r = %.2f to %.2f\n",
+            min(ext_r), max(ext_r)))
+cat(sprintf("Correlation of occupancy with the Gini coefficient: r = %.2f\n",
+            tabS6$r_with_occupancy[tabS6$Metric == "Gini coefficient of section biomass"]))
+```
+
+**Why occupancy.** It loads among the highest metrics on the dominant contraction axis, so
+it carries the shared signal rather than an idiosyncratic one; it is the most directly
+interpretable, as the loss of discrete spawning grounds; and it is the most robust to survey
+effort, being a bounded proportion computed from presence rather than from index magnitude.
+Occupancy is identical whether location-years are reduced to their maximum or summed, and it
+is unaffected by any rescaling of index magnitude — the property exploited in `03`.
+
+---
+
+## 4  Metric trajectories (diagnostic, not a manuscript figure)
+
+```{r trajectories, fig.width=11, fig.height=8}
+metrics_all %>%
+  pivot_longer(-Year, names_to = "metric", values_to = "value") %>%
+  mutate(metric = factor(metric_labels[metric], levels = unname(metric_labels))) %>%
+  filter(!is.na(value)) %>%
+  ggplot(aes(Year, value)) +
+  band_postcoll() + band_closure() +
+  geom_line(colour = col_occ, linewidth = 0.6) +
+  geom_smooth(method = "loess", span = 0.4, se = FALSE, colour = col_old, linewidth = 0.9) +
+  facet_wrap(~metric, scales = "free_y", ncol = 3) +
+  labs(x = NULL, y = NULL,
+       title = "Eleven contraction metrics, 1951-2024",
+       subtitle = "Red band, 1968-1971 closure; grey, post-collapse era") +
+  theme_herring(10)
+```
+
+---
+
+## Session information
+
+```{r session}
+sessionInfo()
+```
