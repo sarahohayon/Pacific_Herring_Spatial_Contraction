@@ -2,7 +2,7 @@
 
 Analysis code for the Strait of Georgia Pacific herring study (Ohayon, Dingwall & Bates).
 Every statistic, table and figure in the paper and its supplement is produced by the files
-here, starting from the raw DFO extracts. Nothing reads a cached result.
+here, starting from the raw DFO extracts. 
 
 ## Layout
 
