@@ -74,7 +74,7 @@ age_palette <- setNames(
 tf_ok <- function(source, year, gear)
   source != "Test Fishery" | (as.numeric(year) >= 1977 & gear %in% c("Seine", "Other seine"))
 ## the biosample extract has no usable header row: names are assigned from 00_setup.R
-Biosample_sog <- read_csv(file.path(RAW, "Biosample_Strait_of_Georgia.csv"), show_col_types = FALSE,
+Biosample_sog <- read_csv(setup$F_BIO, show_col_types = FALSE,
                           name_repair = "minimal", guess_max = 100000) %>%
   setNames(setup$BIO_COLS) %>%
   mutate(Year = setup$recode_two_digit_year(year))

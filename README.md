@@ -24,8 +24,8 @@ cd Outputs/code && Rscript ../../run_all.R
 ```
 
 `01` runs first: it builds the derived series that everything else reads. It is also the only
-step that needs the two DFO extracts that are not in this repository; without them, start at
-`02`, which runs from the series already in `Outputs/derived/`.
+step that needs the DFO commercial catch extracts, which are not in this repository; without them,
+start at `02`, which runs from the series already in `Outputs/derived/`.
 
 A full run takes about 15 minutes, mostly in `01` (a 100 MB biosample file) and `05` and the
 randomization scripts (thousands of model fits). If `rmarkdown::render` cannot find pandoc
@@ -97,12 +97,14 @@ site is never dropped from its own history for lacking a position.
 | `Pacific herring catch and landed value dfo_INFLATION.xlsx` | DFO landed value, deflated with the CPI | yes |
 | `SOG_TAC.csv` | total allowable catch | yes |
 | `sections/SectionsIntegrated.shp` | DFO herring section boundaries | yes |
-| `Biosample_Strait_of_Georgia.csv` | DFO herring biosample database, Strait of Georgia, 1946-2024 | no, available from DFO on request |
+| `Biosample_Strait_of_Georgia.csv.gz` | DFO herring biosample database, Strait of Georgia, 1946-2024 (gzip-compressed; read directly) | yes |
 | `SOG_herring_catch_all_fishing_types*.csv` | DFO commercial catch by season, area, fishery and gear | no, available from DFO on request |
 
-Every series derived from the two restricted extracts is included in `Outputs/derived/`.
+The commercial catch extracts are the only inputs not included; every series derived from them is
+in `Outputs/derived/`.
 
-The biosample extract has no usable header row; column names are assigned from `BIO_COLS` in
+The biosample extract is published by DFO as a CSV and stored here gzip-compressed; it has no
+usable header row, so column names are assigned from `BIO_COLS` in
 `00_setup.R`, and two-digit years are converted to calendar years.
 
 ## Requirements

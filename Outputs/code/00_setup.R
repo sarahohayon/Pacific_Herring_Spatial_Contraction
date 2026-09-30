@@ -32,7 +32,7 @@ for (p in c(DERIVED, FIGS, TABS)) dir.create(p, recursive = TRUE, showWarnings =
 
 ## ---- raw data files ---------------------------------------------------------
 F_SPAWN   <- file.path(RAW, "Pacific_herring_spawn_index_data_2025_EN.csv")
-F_BIO     <- file.path(RAW, "Biosample_Strait_of_Georgia.csv")
+F_BIO     <- file.path(RAW, "Biosample_Strait_of_Georgia.csv.gz")   # read directly, gzip-compressed
 F_CATCH   <- file.path(RAW, "SOG_herring_catch_all_fishing_types.csv")
 F_CATCH2  <- file.path(RAW, "SOG_herring_catch_all_fishing_types_2026_03_11.csv")
 F_TAC     <- file.path(RAW, "SOG_TAC.csv")
