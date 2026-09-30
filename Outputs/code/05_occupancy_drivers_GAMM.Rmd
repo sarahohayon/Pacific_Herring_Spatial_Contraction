@@ -1,5 +1,5 @@
 ---
-title: "05 — Drivers of spawning occupancy"
+title: "05 - Drivers of spawning occupancy"
 subtitle: "Results 2.3: AR(1)-GAMM model set, collinearity, alternative drivers and robustness (Supplementary Tables S2-S5, Figs. S4-S5)"
 author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
 date: "`r Sys.Date()`"
@@ -26,9 +26,9 @@ which absorbs the strong serial dependence of an annual series; predictors enter
 penalised thin-plate splines.
 
 Selective pressure on experienced spawners is indexed by the proportion of old fish
-(age ≥ `r OLD_AGE`) in the **dominant, most size-selective gear of each era** — reduction
-seines 1951–1965 and roe gillnets 1972–2024. No samples of either gear exist for the
-intervening years, which span the 1967 stock collapse and the 1968–1971 closure.
+(age ≥ `r OLD_AGE`) in the **dominant, most size-selective gear of each era** - reduction
+seines 1951-1965 and roe gillnets 1972-2024. No samples of either gear exist for the
+intervening years, which span the 1967 stock collapse and the 1968-1971 closure.
 
 ```{r data}
 annual <- read_csv(file.path(DERIVED, "annual_series.csv"), show_col_types = FALSE)
@@ -44,7 +44,7 @@ cat(sprintf("cor(prop_old_wt, prop_old_n) = %.4f\n", cor(dm$prop_old_wt, dm$prop
 
 ---
 
-## 1  Supplementary Table S3 — collinearity screening
+## 1  Supplementary Table S3 - collinearity screening
 
 Screening is distinct from model selection: it establishes only that predictors entered into
 the *same* model are not redundant. The two derived removal metrics are algebraic functions
@@ -53,7 +53,9 @@ construction and are never entered jointly with them; each is tested separately 
 Table S5.
 
 ```{r vif}
-vif_set <- c("prop_old_wt","catch_total_t","SSB","value_per_ton",
+## value per tonne is not a candidate driver: it is treated as the market incentive upstream of
+## selectivity (Results), not as a rival mechanism, and is shown descriptively in Fig. 1f
+vif_set <- c("prop_old_wt","catch_total_t","SSB",
              "mean_SST","ONI_ann","mean_PDO")
 vd <- dm %>% select(all_of(vif_set)) %>% drop_na()
 Xv <- model.matrix(~ ., data = vd)[, -1]
@@ -62,7 +64,6 @@ vif <- sapply(seq_len(ncol(Xv)), function(i) 1/(1 - summary(lm(Xv[, i] ~ Xv[, -i
 pretty_names <- c(prop_old_wt   = "Proportion of old fish",
                   catch_total_t = "Total catch",
                   SSB           = "Spawning stock biomass",
-                  value_per_ton = "Value per tonne (real 2024 CAD)",
                   mean_SST      = "Mean SST",
                   ONI_ann       = "Oceanic Nino Index",
                   mean_PDO      = "Pacific Decadal Oscillation")
@@ -80,7 +81,7 @@ kable(tabS3, caption = sprintf(
 
 ---
 
-## 2  Supplementary Table S2 — the driver-combination model set
+## 2  Supplementary Table S2 - the driver-combination model set
 
 The candidate set spans a null model, every subset of the three climate indices, the fishery
 predictor alone and additively with each climate subset, and each fishery × climate tensor
@@ -151,7 +152,7 @@ kable(tabS2, caption = sprintf(
 
 ---
 
-## 3  Supplementary Table S4 — smooth-term statistics
+## 3  Supplementary Table S4 - smooth-term statistics
 
 ```{r smooths}
 m_best <- fit_one("s(prop_old_wt,k=5)+s(mean_SST,k=5)", "REML")
@@ -192,15 +193,13 @@ cat(sprintf("Interaction models: minimum dAIC = %.1f\n",
 
 ---
 
-## 4  Supplementary Table S5 — alternative drivers
+## 4  Supplementary Table S5 - alternative drivers
 
 Each alternative predictor is fitted alone, and then added to the best-supported model. If
-selectivity is the operative mechanism, the *amount* removed, the *price*, and the *stock
-size* should each be weak alone and add nothing alongside the proportion of old fish.
+selectivity is the operative mechanism, the *amount* removed and the *stock size* should each
+be weak alone and add nothing alongside the proportion of old fish.
 
 ```{r alternatives}
-dm_val <- dm %>% filter(!is.na(value_per_ton))
-
 alt_row <- function(var, label, data = dm) {
   ma  <- fit_one(sprintf("s(%s,k=5)", var), "REML", data)
   mad <- fit_one(sprintf("s(prop_old_wt,k=5)+s(mean_SST,k=5)+s(%s,k=5)", var), "REML", data)
@@ -221,7 +220,6 @@ tabS5 <- bind_rows(
   alt_row("catch_total_t",    "Total catch"),
   alt_row("old_removed_t",    "Tonnage of old fish removed"),
   alt_row("old_removed_frac", "Population fraction of old fish removed"),
-  alt_row("value_per_ton",    "Value per tonne (real 2024 CAD)", dm_val),
   alt_row("SSB",              "Spawning stock biomass"))
 save_tab(tabS5, "TableS5_alternative_drivers")
 kable(tabS5, caption = sprintf(
@@ -258,13 +256,13 @@ kable(tabS7, caption = "Supplementary Table S7. Sensitivity of the occupancy res
 ```
 
 Two predictors return nominally significant smooth terms despite a **negative** adjusted R²
-— that is, they fit worse than an intercept-only model. Both occur in fits with
+- that is, they fit worse than an intercept-only model. Both occur in fits with
 near-unit-root residual autocorrelation (φ ≥ 0.9 alone), where the significance test is not
 interpretable; neither improved the best-supported model on AIC or adjusted R².
 
 ---
 
-## 5  Supplementary Fig. S4 — robustness of the selectivity result
+## 5  Supplementary Fig. S4 - robustness of the selectivity result
 
 Four independent ways of getting the answer wrong are tested: measuring selectivity by count
 rather than weight; broadening the fishery from roe gillnets to the whole roe fishery and to
@@ -319,7 +317,7 @@ robust_fit <- function(series, label, variant) {
 
 rob <- bind_rows(
   ## age thresholds, roe gillnet
-  map_dfr(4:7, ~ robust_fit(spliced(.x, "gillnet"), sprintf("age >= %d", .x), "Age threshold")),
+  map_dfr(4:7, ~ robust_fit(spliced(.x, "gillnet"), sprintf("age \u2265 %d", .x), "Age threshold")),
   ## fishery breadth, age >= 5
   robust_fit(spliced(5, "gillnet"), "Roe gillnet",  "Fishery breadth"),
   robust_fit(spliced(5, "roe"),     "Full roe fishery", "Fishery breadth"),
@@ -335,7 +333,7 @@ m_surf <- gamm(logit_occ ~ s(prop_old_wt, k = 5) + s(mean_SST, k = 5),
                correlation = corAR1(form = ~ Year), method = "REML")
 st_surf <- summary(m_surf$gam)$s.table
 rob <- bind_rows(rob, tibble(
-  Variant = "Survey period", Label = "Surface surveys only (<= 1984)",
+  Variant = "Survey period", Label = "Surface surveys only (\u2264 1984)",
   n = sum(!is.na(d_surf$prop_old_wt) & !is.na(d_surf$mean_SST)),
   edf = round(st_surf["s(prop_old_wt)","edf"], 2),
   F   = round(st_surf["s(prop_old_wt)","F"], 2),
@@ -409,22 +407,24 @@ figS4 <- rob %>%
   ggplot(aes(x = `adj. R2`, y = Label)) +
   geom_col(aes(fill = sig), width = 0.65) +
   geom_text(aes(label = sprintf("P %s", ifelse(P < 0.001, "< 0.001", sprintf("= %.3f", P)))),
-            hjust = -0.1, size = 3.2) +
+            hjust = -0.1, size = 4.3) +
   facet_grid(Variant ~ ., scales = "free_y", space = "free_y", switch = "y") +
   scale_fill_manual(values = c(`TRUE` = col_old, `FALSE` = "grey70"), guide = "none") +
   scale_x_continuous(expand = expansion(mult = c(0, 0.28))) +
-  labs(x = "Variance in spawning occupancy explained (adjusted R²)", y = NULL,
-       title = "Supplementary Figure S4. Robustness of the selectivity–occupancy relationship",
-       subtitle = "Each bar is an AR(1)-GAMM of logit(occupancy) ~ s(selectivity) + s(SST); P is for the selectivity smooth") +
+  ## no title: the figure is described by its legend in the Supplement
+  labs(x = "Variance in spawning occupancy explained (adjusted R²)", y = NULL) +
   theme_herring(11) +
-  theme(strip.placement = "outside", strip.text.y.left = element_text(angle = 0, hjust = 1))
+  theme(strip.placement = "outside",
+        strip.text.y.left = element_text(angle = 0, hjust = 1, size = 14),
+        axis.text  = element_text(size = 13, colour = "black"),
+        axis.title = element_text(size = 14))
 save_fig(figS4, "FigureS4_selectivity_robustness", width = 10, height = 5.5)
 figS4
 ```
 
 ---
 
-## 6  Supplementary Fig. S5 — partial effects of the four drivers
+## 6  Supplementary Fig. S5 - partial effects of the four drivers
 
 ```{r figS5, fig.width=10, fig.height=7.5}
 st  <- summary(m_full$gam)$s.table
@@ -449,25 +449,26 @@ mk <- function(v) {
     annotate("text", x = -Inf, y = Inf, hjust = -0.1, vjust = 1.5, size = 3.6,
              fontface = "bold", colour = cols_v[v], label = sprintf("P %s", fmt_p(p))) +
     labs(x = labs_v[v], y = "Partial effect on logit(occupancy)") +
-    theme_herring(11)
+    theme_herring(11) +
+    theme(axis.text  = element_text(size = 13, colour = "black"),
+          axis.title = element_text(size = 14))
 }
 
 figS5 <- (mk("prop_old_wt") | mk("mean_SST")) / (mk("ONI_ann") | mk("mean_PDO")) +
-  plot_annotation(tag_levels = "a",
-    title = "Supplementary Figure S5. Partial effects of the four candidate drivers in the full additive model",
-    theme = theme(plot.title = element_text(face = "bold", size = 12)))
+  plot_annotation(tag_levels = "a") &
+  theme(plot.tag = element_text(face = "bold", size = 18))
 save_fig(figS5, "FigureS5_partial_effects", width = 10, height = 8)
 figS5
 ```
 
 ---
 
-## 7  Figure 3 — the assembled panels
+## 7  Figure 3 - the assembled panels
 
 Panel **a** shows the two series the model relates, with SST beneath them; **b** is the
 fitted relationship from the best-supported AR(1)-GAMM; **c** collects the variance explained
 by each candidate driver fitted alone, so the selectivity index can be compared directly
-against climate, catch, price and stock size.
+against climate, catch and stock size.
 
 ```{r fig3-panels, fig.width=17, fig.height=6.5}
 gear_cols <- c("Reduction seine" = "#7B5B9D", "Roe gillnet" = "#B23A34")

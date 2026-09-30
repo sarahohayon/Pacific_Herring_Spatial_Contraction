@@ -1,8 +1,7 @@
 Predictor,VIF,r with occupancy
-Proportion of old fish,3.25,-0.73
-Total catch,2.36,0.64
-Value per tonne (real 2024 CAD),1.64,-0.31
-Pacific Decadal Oscillation,1.57,-0.02
-Mean SST,1.54,-0.58
-Oceanic Nino Index,1.46,0.08
-Spawning stock biomass,1.36,-0.28
+Proportion of old fish,2.91,-0.73
+Total catch,2.34,0.64
+Mean SST,1.53,-0.58
+Oceanic Nino Index,1.43,0.08
+Pacific Decadal Oscillation,1.33,-0.02
+Spawning stock biomass,1.27,-0.28

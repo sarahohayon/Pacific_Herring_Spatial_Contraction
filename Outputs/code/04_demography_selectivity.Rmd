@@ -1,5 +1,5 @@
 ---
-title: "04 — Size-selective fishing and the restructuring of population demography"
+title: "04 - Size-selective fishing and the restructuring of population demography"
 subtitle: "Results 2.2: gear selectivity, length-at-age, age-structure change points (Supplementary Fig. S3)"
 author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
 date: "`r Sys.Date()`"
@@ -15,7 +15,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
                       dpi = 150, fig.align = "center")
 source("00_setup.R")
-library(mgcv); library(segmented); library(patchwork); library(knitr); library(scales)
+library(mgcv); library(segmented); library(patchwork); library(knitr); library(scales); library(nlme)
 ```
 
 ```{r load}
@@ -62,11 +62,11 @@ Each row of the data is one source-year, with counts of old (age ≥ 5) and youn
 so its variance is fixed by the counts. Fish are caught in schools and sampled in sets, so the
 real year-to-year scatter is far larger: residual deviance/df is ~100, i.e. the data are ~100×
 overdispersed. Under that assumption the standard errors are ~10× too small and AIC differences
-become meaningless (the earlier dAIC = 65,403). Two corrections are used instead:
+become meaningless. Two corrections are used instead:
 
-1. **Quasibinomial GAM** — the same model, but the dispersion is estimated from the data rather
+1. **Quasibinomial GAM** - the same model, but the dispersion is estimated from the data rather
    than fixed at 1, and the common-trend vs source-specific-trend comparison is an F test.
-2. **Binomial GAM with an observation-level random effect** (`s(obs, bs = "re")`) — each
+2. **Binomial GAM with an observation-level random effect** (`s(obs, bs = "re")`) - each
    source-year gets its own random deviation, which absorbs the extra scatter. With one shared
    temporal smooth, the source coefficients are the difference in *level* between sources,
    reported as odds ratios relative to the test fishery (the closest index of the spawning
@@ -178,7 +178,7 @@ la %>% mutate(era = case_when(Year <= 1979 ~ "<=1979",
 The test fishery began in 1975 and samples during the spawning season, and so is the closest
 available fishery-independent index of the spring spawning population. Mean age and the
 proportion of old fish are contrasted across three phases: pre-collapse (≤ 1983), the
-collapse itself (1984–1986) and the post-collapse period (≥ 1987).
+collapse itself (1984-1986) and the post-collapse period (≥ 1987).
 
 A one-way ANOVA is used rather than a change-point test because the trajectory is a drop
 **and a partial recovery**, which a single-breakpoint model cannot represent; on mean age the
@@ -253,13 +253,17 @@ m_a6    <- glm(prop_age6 ~ Year, family = binomial, data = ta, weights = wt_age)
 m_a5    <- glm(prop_age5 ~ Year, family = binomial, data = ta, weights = wt_age)
 m_a4    <- glm(prop_age4 ~ Year, family = binomial, data = ta, weights = wt_age)
 m_juv   <- glm(prop_juv  ~ Year, family = binomial, data = ta, weights = wt_age)
+m_a3    <- glm(prop_age3 ~ Year, family = binomial, data = ta, weights = wt_age)
+m_a12   <- glm(prop_age12 ~ Year, family = binomial, data = ta, weights = wt_age)
 
 cps <- list(
   `Mean age`            = fit_cp(m_mean, "Mean age (years)"),
   `Proportion age >= 6` = fit_cp(m_a6,   "Proportion age >= 6"),
   `Proportion age >= 5` = fit_cp(m_a5,   "Proportion age >= 5"),
   `Proportion age >= 4` = fit_cp(m_a4,   "Proportion age >= 4"),
-  `Proportion age 1-3`  = fit_cp(m_juv,  "Proportion age 1-3"))
+  `Proportion age 1-3`  = fit_cp(m_juv,  "Proportion age 1-3"),
+  `Proportion age 3`    = fit_cp(m_a3,   "Proportion age 3"),
+  `Proportion age 1-2`  = fit_cp(m_a12,  "Proportion age 1-2"))
 
 cp_tab <- map_dfr(cps, "row")
 save_tab(cp_tab, "age_structure_changepoints")
@@ -267,28 +271,36 @@ kable(cp_tab, caption = "Change-point analysis of test-fishery age structure (se
 ```
 
 ```{r cp-figure, fig.width=10, fig.height=12}
-yvars <- c("mean_age","prop_age6","prop_age5","prop_age4","prop_juv")
+## Fig. S3 panels: age 1-3 (still in the change-point table) is split into age 3 (e) and
+## age 1-2 (f) in the figure
+fig_cps <- cps[c("Mean age", "Proportion age >= 6", "Proportion age >= 5",
+                 "Proportion age >= 4", "Proportion age 3", "Proportion age 1-2")]
+yvars <- c("mean_age","prop_age6","prop_age5","prop_age4","prop_age3","prop_age12")
 ylabs <- c("Mean age (years)","Proportion age ≥ 6","Proportion age ≥ 5",
-           "Proportion age ≥ 4","Proportion age 1–3")
+           "Proportion age ≥ 4","Proportion age 3","Proportion age 1-2")
 
 ## Panel a (mean age) shows the three-phase contrast reported in the Results, not a change
 ## point: mean age falls and then partially recovers, so a single break describes it poorly
-## and the Davies test does not reject. Panels b-e keep the change-point fits.
-ph_means <- ta %>%
+## and the Davies test does not reject. The other panels keep the change-point fits.
+PHASE_PANELS <- "mean_age"
+phase_means <- function(v) ta %>%
   mutate(ph = factor(PHASE3(Year), levels = c("Pre-collapse","Collapse","Post-collapse"))) %>%
   group_by(ph) %>%
-  summarise(m = mean(mean_age), se = sd(mean_age)/sqrt(n()),
+  summarise(m = mean(.data[[v]]), se = sd(.data[[v]])/sqrt(n()),
             x0 = min(Year), x1 = max(Year), .groups = "drop")
 
-panels <- map(seq_along(cps), function(i) {
-  cp <- cps[[i]]; v <- yvars[i]
+panels <- map(seq_along(fig_cps), function(i) {
+  cp <- fig_cps[[i]]; v <- yvars[i]
   bp <- as.numeric(summary(cp$seg)$psi[, "Est."])
   dv <- cp$row$`Davies P`
   p <- ggplot(ta, aes(Year, .data[[v]])) +
     band_postcoll(max(ta$Year)) + band_closure() +
     geom_line(colour = "grey35", linewidth = 0.7) +
     geom_point(aes(size = n_fish), colour = "grey30", alpha = 0.7, shape = 16)
-  if (i == 1) {
+  if (v %in% PHASE_PANELS) {
+    ph_means <- phase_means(v)
+    fmt_m <- "%.2f"
+    lab_ph <- "three-phase means \u00b1 SE (pre \u2264 1983, collapse 1984-1986, post \u2265 1987)"
     p <- p +
       geom_rect(data = ph_means, inherit.aes = FALSE,
                 aes(xmin = x0, xmax = x1, ymin = m - se, ymax = m + se),
@@ -300,36 +312,45 @@ panels <- map(seq_along(cps), function(i) {
                 aes(x = (x0 + x1)/2,
                     y = if_else(ph == "Collapse", m - se, m + se),
                     vjust = if_else(ph == "Collapse", 1.8, -0.8),
-                    label = sprintf("%.2f", m)),
+                    label = sprintf(fmt_m, m)),
                 size = 3.4, colour = col_old) +
-      annotate("text", x = -Inf, y = Inf, hjust = -0.08, vjust = 1.5, size = 3.4,
-               label = "three-phase means \u00b1 SE (pre <= 1983, collapse 1984-1986, post >= 1987)")
+      annotate("text", x = Inf, y = Inf, hjust = 1.02, vjust = 1.3, size = 4.2,
+               label = lab_ph)
   } else {
     p <- p +
       geom_line(aes(y = cp$fitted), colour = col_old, linewidth = 1.1) +
       geom_vline(xintercept = bp, linetype = "dashed", colour = "grey25") +
-      annotate("text", x = -Inf, y = Inf, hjust = -0.08, vjust = 1.5, size = 3.4,
+      annotate("text", x = Inf, y = Inf, hjust = 1.02, vjust = 1.3, size = 4.2,
                label = sprintf("break %.0f; Davies P %s", bp,
                                if (is.na(dv)) "n/a" else if (dv < 1e-4) "< 0.0001"
                                else sprintf("= %.4f", dv)))
   }
   p +
-    scale_size_area(name = "Fish aged", max_size = 4, labels = label_number(big.mark = ",")) +
+    scale_size_area(name = "Fish aged", max_size = 4, labels = label_number(big.mark = ","),
+                    limits = c(0, max(ta$n_fish)), breaks = c(2000, 4000, 6000)) +
+    ## headroom above the data for the statistics text
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.22))) +
     labs(x = NULL, y = ylabs[i]) +
     theme_herring(11) +
-    theme(legend.position = if (i == 1) c(0.99, 0.02) else "none",
-          legend.justification = c(1, 0))
+    theme(axis.text  = element_text(size = 13, colour = "black"),
+          axis.title = element_text(size = 14),
+          legend.position = if (i == 1) "inside" else "none",
+          legend.position.inside = c(0.66, 0.04), legend.justification = c(0.5, 0),
+          legend.direction = "horizontal", legend.title = element_text(size = 13),
+          legend.text = element_text(size = 12),
+          legend.background = element_blank(), legend.key = element_blank())
 })
 
+## no title: the figure is described by its legend in the Supplement; panel letters bold
+## "Fish aged" legend only in panel a, inside the grey post-collapse band
 figS3 <- wrap_plots(panels, ncol = 1) +
-  plot_annotation(tag_levels = "a",
-    title = "Supplementary Figure S3. Age structure of the Strait of Georgia test fishery",
-    theme = theme(plot.title = element_text(face = "bold", size = 12)))
-save_fig(figS3, "FigureS3_age_structure_changepoints", width = 9, height = 14)
+  plot_annotation(tag_levels = "a") &
+  theme(plot.tag = element_text(face = "bold", size = 18))
+save_fig(figS3, "FigureS3_age_structure_changepoints", width = 9, height = 16.5)
 figS3
 ```
 
-**Reading the panels.** The break in the proportion metrics falls at 1985–1986 under every
+**Reading the panels.** The break in the proportion metrics falls at 1985-1986 under every
 definition of old fish, and at the same date in the mirror-image rise of juveniles and
 first-time spawners. Mean age is the one metric on which the change-point test is
 uninformative: it drops and then partially recovers, so a single change in slope describes
@@ -339,11 +360,234 @@ rather than a change-point fit.
 
 ---
 
-## 6  Figure 2 — the assembled panels
+## 5b  Loss of older fish or dilution by recruitment? (Tables S9, S10; Supplementary Methods)
+
+A proportion of older fish can fall because older fish are lost, or because a large cohort of
+young fish arrives. The checks below use quantities that a recruitment pulse cannot move:
+the composition *within* the older fish, the tonnage and numbers at age, cohort survival
+estimated separately for each age class, and the removal rate at age.
+
+Spawning biomass at age = annual SSB (the DFO spawn index, as in Fig. 1a) × the test-fishery
+age composition by weight (ages ≥ 3, the spawning ages). Numbers at age = that biomass ÷ the
+test-fishery mean weight at age. Test-fishery samples are defined as in `01` (seine, all months, from 1977).
+
+```{r dilution-data}
+annual <- read_csv(file.path(DERIVED, "annual_series.csv"), show_col_types = FALSE)
+bio_raw <- read_csv(F_BIO, show_col_types = FALSE, name_repair = "minimal", guess_max = 100000)
+names(bio_raw) <- BIO_COLS
+bio_all <- bio_raw %>%
+  mutate(across(c(stat_area, weight_g, age, month), ~ suppressWarnings(as.numeric(.x))),
+         Year = recode_two_digit_year(year)) %>%
+  filter(!is.na(age), age >= 1)
+
+ph3 <- function(y) factor(PHASE3(y), levels = c("Pre-collapse", "Collapse", "Post-collapse"))
+
+tf <- bio_all %>%
+  filter(source == "Test Fishery", keep_tf(source, Year, gear),
+         Year %in% 1977:2024) %>%
+  group_by(Year) %>% filter(n() >= MIN_FISH) %>% ungroup()
+```
+
+### Which older fish? Age composition within the fish aged ≥ 5
+
+```{r old-composition}
+old_comp <- tf %>% filter(age >= 5) %>%
+  mutate(age_c = factor(ifelse(age >= 9, "9+", as.character(age)),
+                        levels = c("5", "6", "7", "8", "9+"))) %>%
+  count(Year, age_c) %>% group_by(Year) %>% mutate(share = n/sum(n)) %>% ungroup() %>%
+  complete(Year, age_c, fill = list(n = 0, share = 0)) %>% mutate(phase = ph3(Year))
+old_comp_tab <- old_comp %>% group_by(phase, age_c) %>%
+  summarise(share = round(100*mean(share), 1), .groups = "drop") %>%
+  pivot_wider(names_from = age_c, values_from = share, names_prefix = "% age ")
+
+## age >= 7 in the whole sample, and mean age of the older fish
+old_depth <- tf %>% group_by(Year) %>%
+  summarise(p7 = mean(age >= 7), mean_age_old = mean(age[age >= 5]), .groups = "drop") %>%
+  mutate(phase = ph3(Year))
+old_comp_tab <- old_comp_tab %>%
+  left_join(old_depth %>% group_by(phase) %>%
+              summarise(`% of all fish aged >= 7` = round(100*mean(p7), 1),
+                        `mean age of fish >= 5` = round(mean(mean_age_old), 2), .groups = "drop"),
+            by = "phase")
+save_tab(old_comp_tab, "old_fish_composition_by_phase")
+kable(old_comp_tab, caption = "Share of each age class among the test-fishery fish aged 5 and older (mean of annual shares), by phase")
+
+for (v in c("p7", "mean_age_old")) {
+  a <- summary(aov(as.formula(paste(v, "~ phase")), data = old_depth))[[1]]
+  cat(sprintf("%s: F(%d,%d) = %.2f, P %s\n", v, a$Df[1], a$Df[2], a$`F value`[1], fmt_p(a$`Pr(>F)`[1])))
+}
+```
+
+### Tonnage of older and younger spawners
+
+```{r ssb-at-age}
+w_share <- tf %>% filter(age >= 3, !is.na(weight_g), weight_g > 0) %>%
+  mutate(age_c = pmin(age, 9)) %>%
+  group_by(Year) %>% mutate(tot = sum(weight_g)) %>%
+  group_by(Year, age_c) %>%
+  summarise(share = sum(weight_g)/first(tot), w_kg = mean(weight_g)/1000, n = n(), .groups = "drop")
+ssb_age <- w_share %>% inner_join(annual %>% dplyr::select(Year, SSB), by = "Year") %>%
+  mutate(ssb_t = share * SSB, N = ssb_t / w_kg)
+
+oy <- ssb_age %>% group_by(Year) %>%
+  summarise(old_kt = sum(ssb_t[age_c >= 5])/1000, young_kt = sum(ssb_t[age_c <= 4])/1000,
+            .groups = "drop") %>% mutate(phase = ph3(Year))
+oy_tab <- oy %>% group_by(phase) %>%
+  summarise(years = n(), `older (>= 5) kt` = round(mean(old_kt), 1),
+            `younger (3-4) kt` = round(mean(young_kt), 1), .groups = "drop")
+gl <- function(f) { m <- gls(f, data = oy, correlation = corAR1(form = ~ Year)); summary(m)$tTable }
+t_old <- gl(log(old_kt) ~ phase); t_young <- gl(log(young_kt) ~ phase)
+oy_tab <- oy_tab %>% mutate(
+  `older: P vs pre`   = c(NA, signif(t_old[2:3, 4], 2)),
+  `younger: P vs pre` = c(NA, signif(t_young[2:3, 4], 2)))
+save_tab(oy_tab, "spawning_biomass_old_young_by_phase")
+kable(oy_tab, caption = "Spawning biomass of older and younger spawners by phase (GLS, AR(1), on log biomass)")
+```
+
+### Cohort mortality, estimated separately for each age class
+
+Z(a, t) = ln[N(a, t) / N(a+1, t+1)]. Transitions from age 3 to age 8 (age 9 is a plus group).
+The 1987 → 1988 transition is dropped because it spans DFO's change from the q₁ to the q₂
+survey period. Because the spawn index counts only fish that spawned in the Strait, Z also
+contains emigration and skipped spawning.
+
+```{r cohort-mortality}
+Zt <- ssb_age %>% dplyr::select(Year, age = age_c, N, n) %>%
+  inner_join(ssb_age %>% transmute(Year = Year - 1, age = age_c - 1, N1 = N, n1 = n),
+             by = c("Year", "age")) %>%
+  filter(age <= 7, n >= 20, n1 >= 20, Year != 1987) %>%
+  mutate(Z = log(N/N1), end = Year + 1,
+         phase = factor(case_when(end <= 1983 ~ "Pre-collapse", end <= 1986 ~ "Collapse",
+                                  TRUE ~ "Post-collapse"),
+                        levels = c("Pre-collapse", "Collapse", "Post-collapse")))
+z_tab <- Zt %>% group_by(transition = paste0(age, "-", age + 1), phase) %>%
+  summarise(n = n(), Z = median(Z), .groups = "drop") %>%
+  mutate(S = round(exp(-Z), 2), Z = round(Z, 2)) %>%
+  pivot_wider(names_from = phase, values_from = c(n, Z, S))
+## pre vs post, per age class (collapse transitions excluded)
+z_test <- map_dfr(3:7, function(a) {
+  d <- Zt %>% filter(age == a, phase != "Collapse") %>% mutate(post = phase == "Post-collapse")
+  m <- gls(Z ~ post, data = d, correlation = corAR1(form = ~ Year))
+  tibble(transition = paste0(a, "-", a + 1), `post - pre dZ` = round(coef(m)[2], 2),
+         `P (post vs pre)` = signif(summary(m)$tTable[2, 4], 2))
+})
+z_tab <- z_tab %>% left_join(z_test, by = "transition")
+save_tab(z_tab, "cohort_mortality_by_age")
+kable(z_tab, caption = "Median cohort mortality Z and survival S by age transition and phase")
+
+m_col <- lm(Z ~ (phase == "Collapse") + factor(age), data = Zt %>% filter(phase != "Post-collapse", age >= 4))
+cat(sprintf("Collapse vs pre-collapse, ages 4-7: dZ = %.2f, P %s (transitions ending %s)\n",
+            coef(m_col)[2], fmt_p(summary(m_col)$coefficients[2, 4]),
+            paste(sort(unique(Zt$end[Zt$phase == "Collapse"])), collapse = ", ")))
+```
+
+### Mortality of older fish relative to age 3, and the oldest fish against natural mortality alone
+
+Each Z above uses the spawn index twice, so any year-to-year error in the index enters every age
+equally. The extra mortality of each age over age 3 in the same pair of years cancels that error.
+
+The oldest fish are then set against the share that natural mortality alone would leave, under
+constant recruitment, full maturity from age 3 and a maximum age of 10 (the maximum age used here
+for Pacific herring in British Columbia). Two sources of M are compared: DFO's estimate for the
+Strait of Georgia (median 0.467, 90% interval 0.261-0.783; DFO 2022, Science Response 2022/046,
+Table 12; the same M at every age), which is fitted to the same catch, age and spawn data, and two
+longevity-based estimators that use none of these data (Then et al. 2015, M = 4.899 t_max^-0.916;
+Hamel & Cope 2022, M = 5.4 / t_max).
+
+```{r relative-mortality}
+rel <- Zt %>% group_by(Year) %>% filter(any(age == 3)) %>%
+  mutate(dZ = Z - Z[age == 3]) %>% ungroup() %>% filter(age >= 4)
+rel_tab <- rel %>% group_by(transition = paste0(age, "-", age + 1), phase) %>%
+  summarise(dZ = round(median(dZ), 2), n = n(), .groups = "drop") %>%
+  pivot_wider(names_from = phase, values_from = c(dZ, n))
+rel_pp <- rel %>% filter(phase != "Collapse") %>% mutate(post = phase == "Post-collapse")
+rel_tab <- rel_tab %>% left_join(
+  map_dfr(4:7, function(a) { d <- filter(rel_pp, age == a)
+    tibble(transition = paste0(a, "-", a + 1), `P (post vs pre)` = signif(t.test(dZ ~ post, data = d)$p.value, 2)) }),
+  by = "transition")
+save_tab(rel_tab, "relative_mortality_by_age")
+kable(rel_tab, caption = "Extra mortality of each age over age 3 in the same years (median), by phase")
+m_rel <- lm(dZ ~ post + factor(age), data = rel_pp)
+cat(sprintf("Ages 4-7 together, post-collapse minus pre-collapse: %+.2f (SE %.2f), P %s\n",
+            coef(m_rel)["postTRUE"], summary(m_rel)$coefficients["postTRUE", 2],
+            fmt_p(summary(m_rel)$coefficients["postTRUE", 4])))
+
+## share of spawners (age >= 3) aged >= 7: test fishery by year, and expectation under M alone
+p7_year <- tf %>% filter(age >= 3) %>% group_by(Year) %>%
+  summarise(`% aged >= 7` = round(100*mean(age >= 7), 1), n = n(), .groups = "drop")
+save_tab(p7_year, "share_age7plus_test_fishery_by_year")
+T_MAX <- 10
+exp_share <- function(M) { s <- exp(-M*(0:(T_MAX - 3))); 100*sum(s[5:length(s)])/sum(s) }   # ages 3-10
+m_exp <- tibble(source = c("DFO 2022, 5%", "DFO 2022, median", "DFO 2022, 95%",
+                           "Then et al. 2015 (t_max = 10)", "Hamel & Cope 2022 (t_max = 10)"),
+                M = c(0.261, 0.467, 0.783, 4.899*T_MAX^-0.916, 5.4/T_MAX)) %>%
+  mutate(M = round(M, 3), `expected % aged >= 7` = round(sapply(M, exp_share), 1))
+save_tab(m_exp, "expected_share_age7plus_natural_mortality")
+kable(m_exp, caption = "Share of spawners aged >= 7 expected under natural mortality alone (ages 3-10)")
+kable(p7_year %>% mutate(phase = ph3(Year)) %>% group_by(phase) %>%
+        summarise(`mean % aged >= 7` = round(mean(`% aged >= 7`), 1),
+                  range = sprintf("%.1f-%.1f", min(`% aged >= 7`), max(`% aged >= 7`)), .groups = "drop"),
+      caption = "Observed share of spawners aged >= 7 in the test fishery")
+
+## the same share in the roe-gillnet catch, for contrast (Fig. S2)
+gn7 <- bio_all %>% filter(source == "Roe Fishery", str_detect(gear, "Gillnet"), stat_area %in% BIO_AREAS,
+                          age >= 3, Year %in% 1972:2024) %>%
+  group_by(Year) %>% filter(n() >= MIN_FISH) %>%
+  summarise(p7 = 100*mean(age >= 7), .groups = "drop") %>%
+  mutate(period = ifelse(Year <= 1983, "1972-1983", ifelse(Year <= 1986, "1984-1986", "1987-2024")))
+kable(gn7 %>% group_by(period) %>% summarise(`roe gillnet: mean % aged >= 7` = round(mean(p7), 1), years = n()),
+      caption = "Share of fish aged >= 7 in the roe-gillnet catch")
+```
+
+### Removals at age, against each age's share of the population
+
+Removals at age = catch by gear (seine, gillnet; statistical areas 13-18) × the age composition by
+weight of that gear's roe-fishery samples. Exploitation rate at age = removals at age ÷ (removals at
+age + spawning biomass at age). The TAC was introduced in 1986.
+
+```{r removals-at-age}
+p_gear <- bio_all %>%
+  filter(source == "Roe Fishery", stat_area %in% BIO_AREAS, !is.na(weight_g), weight_g > 0,
+         age >= 3) %>%
+  mutate(gear_grp = case_when(str_detect(gear, "Gillnet") ~ "Gillnet",
+                              str_detect(gear, "[Ss]eine") ~ "Seine", TRUE ~ "Other"),
+         age_c = pmin(age, 9)) %>%
+  filter(gear_grp %in% c("Gillnet", "Seine")) %>%
+  group_by(Year, gear_grp) %>% filter(n() >= MIN_FISH) %>% mutate(tot = sum(weight_g)) %>%
+  group_by(Year, gear_grp, age_c) %>% summarise(p_wt = sum(weight_g)/first(tot), .groups = "drop")
+rem_age <- catchdec %>% filter(area %in% BIO_AREAS, gear_grp %in% c("Gillnet", "Seine")) %>%
+  group_by(Year, gear_grp) %>% summarise(catch_t = sum(catch_t, na.rm = TRUE), .groups = "drop") %>%
+  inner_join(p_gear, by = c("Year", "gear_grp")) %>%
+  group_by(Year, age_c) %>% summarise(rem_t = sum(catch_t * p_wt), .groups = "drop")
+ex_age <- ssb_age %>% dplyr::select(Year, age_c, ssb_t) %>% inner_join(rem_age, by = c("Year", "age_c")) %>%
+  mutate(U = rem_t/(rem_t + ssb_t))
+ex_year <- ex_age %>% group_by(Year) %>%
+  summarise(`older removed t` = round(sum(rem_t[age_c >= 5])),
+            `U older (>= 5)`   = round(sum(rem_t[age_c >= 5])/sum(rem_t[age_c >= 5] + ssb_t[age_c >= 5]), 2),
+            `U younger (3-4)`  = round(sum(rem_t[age_c <= 4])/sum(rem_t[age_c <= 4] + ssb_t[age_c <= 4]), 2),
+            `older share of catch` = round(sum(rem_t[age_c >= 5])/sum(rem_t), 2),
+            `older share of population` = round(sum((rem_t + ssb_t)[age_c >= 5])/sum(rem_t + ssb_t), 2),
+            .groups = "drop") %>%
+  left_join(annual %>% transmute(Year, `older removed t (all gears, Fig. 3 series)` = round(old_removed_t)),
+            by = "Year")
+save_tab(ex_year, "removals_at_age_by_year")
+kable(ex_year %>% filter(Year <= 1995), caption = "Removals of older fish and exploitation rate, older versus younger, 1977-1995")
+
+ex_ph <- ex_year %>% mutate(phase = ph3(Year)) %>% group_by(phase) %>%
+  summarise(years = n(), `U older` = round(mean(`U older (>= 5)`), 2),
+            `U younger` = round(mean(`U younger (3-4)`), 2), .groups = "drop")
+kable(ex_ph, caption = "Mean exploitation rate by phase")
+kable(annual %>% filter(Year %in% 1972:1983) %>% transmute(Year, `older removed t` = round(old_removed_t)),
+      caption = "Tonnage of older fish removed, 1972-1983 (all gears; the series used in Fig. 3)")
+```
+
+---
+
+## 6  Figure 2 - the assembled panels
 
 The four panels are built from the same objects the statistics above are computed from:
-`catchdec` (a), `gd` (b), `la` (c) and `ta` (d). Every panel carries the same two bands —
-red for the 1968–1971 closure, grey for the post-collapse era.
+`catchdec` (a), `gd` (b), `la` (c) and `ta` (d). Every panel carries the same two bands -
+red for the 1968-1971 closure, grey for the post-collapse era.
 
 ```{r fig2-panels, fig.width=16, fig.height=11}
 shade_layer <- geom_rect(data = shade_df,

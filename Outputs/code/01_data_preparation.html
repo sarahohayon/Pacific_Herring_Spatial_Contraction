@@ -11,7 +11,7 @@
 
 <meta name="author" content="Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates" />
 
-<meta name="date" content="2026-09-15" />
+<meta name="date" content="2026-09-29" />
 
 <title>01 — Data preparation</title>
 
@@ -1589,7 +1589,7 @@ border-radius: 0px;
 <h3 class="subtitle">Raw DFO files to the derived annual and site-level
 series used by every downstream analysis</h3>
 <h4 class="author">Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates</h4>
-<h4 class="date">2026-09-15</h4>
+<h4 class="date">2026-09-29</h4>
 
 </div>
 
@@ -1872,7 +1872,7 @@ gear_prop &lt;- bio %&gt;%
 
 ## annual age composition by sampling source (Fig. 2b) and by source x gear
 bio_by_source &lt;- bio %&gt;%
-  filter(stat_area %in% BIO_AREAS, !is.na(age), age &gt;= 1) %&gt;%
+  filter(stat_area %in% BIO_AREAS, !is.na(age), age &gt;= 1, keep_tf(source, Year, gear)) %&gt;%
   mutate(gear_grp = gear_group(gear),
          src = case_when(
            source == &quot;Reduction Fishery&quot; ~ &quot;Reduction&quot;,
@@ -1898,12 +1898,11 @@ write_csv(bio_by_source, file.path(DERIVED, &quot;biosample_annual_by_source.csv
 <h3>2b Test-fishery age structure (the population index)</h3>
 <p>The test fishery began in 1975 and samples during the spawning
 season, so it is the closest available fishery-independent index of the
-spring spawning population. Restricted to seine gear in March–May,
-matching the change-point analysis in <code>04</code>.</p>
+spring spawning population. Restricted to seine sets in all months from
+1977, matching every other test-fishery analysis.</p>
 <pre class="r"><code>test_age &lt;- bio %&gt;%
   filter(source == &quot;Test Fishery&quot;,
-         gear %in% c(&quot;Seine&quot;, &quot;Other seine&quot;),
-         month_n %in% 3:5,
+         keep_tf(source, Year, gear),          # all months, seine, from 1977
          !is.na(age), age &gt;= 1) %&gt;%
   group_by(Year) %&gt;%
   summarise(n_fish    = n(),
@@ -1911,23 +1910,25 @@ matching the change-point analysis in <code>04</code>.</p>
             sd_age    = sd(age),
             n_age4    = sum(age &gt;= 4), n_age5 = sum(age &gt;= 5), n_age6 = sum(age &gt;= 6),
             n_age7    = sum(age &gt;= 7), n_juv  = sum(age &lt;= 3),
+            n_age3    = sum(age == 3), n_age12 = sum(age &lt;= 2),
             .groups   = &quot;drop&quot;) %&gt;%
   filter(n_fish &gt;= MIN_FISH) %&gt;%
   mutate(prop_age4 = n_age4/n_fish, prop_age5 = n_age5/n_fish,
          prop_age6 = n_age6/n_fish, prop_age7 = n_age7/n_fish,
          prop_juv  = n_juv /n_fish,
+         prop_age3 = n_age3/n_fish, prop_age12 = n_age12/n_fish,
          phase     = factor(PHASE3(Year),
                             levels = c(&quot;Pre-collapse&quot;,&quot;Collapse&quot;,&quot;Post-collapse&quot;)))
 
 cat(sprintf(&quot;Test fishery: %d years (%d-%d), %s aged fish\n&quot;,
             nrow(test_age), min(test_age$Year), max(test_age$Year),
             format(sum(test_age$n_fish), big.mark = &quot;,&quot;)))</code></pre>
-<pre><code>## Test fishery: 48 years (1977-2024), 141,847 aged fish</code></pre>
+<pre><code>## Test fishery: 48 years (1977-2024), 203,817 aged fish</code></pre>
 <pre class="r"><code>write_csv(test_age, file.path(DERIVED, &quot;test_fishery_age.csv&quot;))
 
 ## test-fishery prop_old by statistical area x year — predictor for the site-level models
 test_age_area &lt;- bio %&gt;%
-  filter(source == &quot;Test Fishery&quot;, stat_area %in% BIO_AREAS,
+  filter(source == &quot;Test Fishery&quot;, stat_area %in% BIO_AREAS, keep_tf(source, Year, gear),
          !is.na(age), age &gt;= 1) %&gt;%
   group_by(Year, stat_area) %&gt;%
   summarise(n_fish = n(), prop_old = mean(age &gt;= OLD_AGE), .groups = &quot;drop&quot;) %&gt;%
@@ -1938,7 +1939,7 @@ write_csv(test_age_area, file.path(DERIVED, &quot;test_fishery_age_by_area.csv&q
 <h3>2c Length-at-age</h3>
 <pre class="r"><code>len_age &lt;- bio %&gt;%
   filter(stat_area %in% BIO_AREAS,
-         source %in% c(&quot;Reduction Fishery&quot;,&quot;Test Fishery&quot;),
+         source %in% c(&quot;Reduction Fishery&quot;,&quot;Test Fishery&quot;), keep_tf(source, Year, gear),
          !is.na(age), !is.na(length_mm), age %in% 2:10) %&gt;%
   group_by(Year, age, source) %&gt;%
   summarise(mean_len_mm = mean(length_mm), n = n(), .groups = &quot;drop&quot;) %&gt;%
@@ -1948,7 +1949,7 @@ write_csv(test_age_area, file.path(DERIVED, &quot;test_fishery_age_by_area.csv&q
 write_csv(len_age, file.path(DERIVED, &quot;length_at_age.csv&quot;))
 cat(sprintf(&quot;Length-at-age series: %d age-year-source cells, %d-%d\n&quot;,
             nrow(len_age), min(len_age$Year), max(len_age$Year)))</code></pre>
-<pre><code>## Length-at-age series: 401 age-year-source cells, 1946-2024</code></pre>
+<pre><code>## Length-at-age series: 395 age-year-source cells, 1946-2024</code></pre>
 <hr />
 </div>
 </div>
@@ -2153,7 +2154,7 @@ cat(sprintf(&quot;Site-level dataset: %s site-years at %d sites, %d-%d\n&quot;,
             format(nrow(site_occ), big.mark = &quot;,&quot;),
             n_distinct(site_occ$LocationCode),
             min(site_occ$Year), max(site_occ$Year)))</code></pre>
-<pre><code>## Site-level dataset: 8,255 site-years at 212 sites, 1975-2024</code></pre>
+<pre><code>## Site-level dataset: 8,066 site-years at 212 sites, 1977-2024</code></pre>
 <pre class="r"><code>write_csv(site_occ, file.path(DERIVED, &quot;site_occupancy_dataset.csv&quot;))</code></pre>
 <hr />
 </div>

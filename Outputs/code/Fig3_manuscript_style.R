@@ -1,30 +1,25 @@
-## ============================================================
-## Figure 3 - selective removal of old fish predicts the collapse of spawning occupancy
-## Rebuilt 2026-09-16 in the manuscript style (theme_science from
-## Strait_of_Georgia_Pacific_herring 27_05_2026.Rmd), from Outputs/derived/annual_series.csv.
-##
-##   a  spawning occupancy and the proportion of old fish in the dominant gear of each era,
-##      on one 0-100% scale; the line is BROKEN over the 1968-1971 closure because the index
-##      splices two gears (reduction seine 1951-1965, roe gillnet 1972-2024)
-##   b  partial effect of the proportion of old fish from the AR(1) GAMM, with partial
-##      residuals coloured by era (replaces the raw scatter, which mostly separated eras)
-##   c  observed occupancy with the fitted values of three models: old fish, SST only, null
-##   d  model support (dAIC) for the candidate set, best model at zero (Table S2)
-##
-## Panels are saved separately to Figures/Main/Figure 3.
-## Run from Outputs/code: Rscript Fig3_manuscript_style.R
-## ============================================================
+## =============================================================================
+## Figure 3
+## a  spawning occupancy and the proportion of older fish in the dominant gear of each era,
+##    with occupancy predicted from older fish (AR(1) GAMM, 95% band). Lines break over the
+##    1968-1971 closure, where the index switches from reduction seines to roe gillnets.
+## b  variance in occupancy explained by each candidate driver, against its own null from
+##    1,000 randomizations (draws written by Fig3b_null_draws.R)
+## Panels are saved separately and as one combined figure to Figures/Main/Figure 3.
+## Run from Outputs/code:  Rscript Fig3_manuscript_style.R
+## =============================================================================
 
 suppressMessages({
   library(tidyverse); library(mgcv); library(nlme); library(patchwork)
   library(scales); library(showtext); library(sysfonts)
 })
 
-ALIGNED <- "/Users/sarah/Documents/Postdoc/Canada Research/Pacific herring/CLAUDE CODE/PAPER/Aligned_2026_08_06"
+ALIGNED <- normalizePath("../..")   # repository root; run from Outputs/code
 OUT     <- file.path(ALIGNED, "Figures/Main/Figure 3")
 dir.create(OUT, showWarnings = FALSE)
 
 font_add(family = "helvetica", regular = "/System/Library/Fonts/Helvetica.ttc")
+font_add(family = "tagbold", regular = "/System/Library/Fonts/Supplemental/Arial Bold.ttf")   # bold panel letters
 showtext_auto()
 
 col_occ <- "#555555"; col_old <- "#C0392B"; col_sst <- "#2A9D8F"; col_null <- "grey55"
@@ -245,8 +240,11 @@ p3e <- ggplot() +
   labs(x = "Year") +
   common_panel +
   theme(legend.position = "inside", legend.position.inside = c(0.97, 0.965),
-        legend.justification = c(1, 1), legend.text = element_text(size = 12),
-        legend.key.height = unit(1.0, "lines"), legend.key.width = unit(1.5, "lines"),
+        legend.justification = c(1, 1), legend.text = element_text(size = 18),
+        axis.text = element_text(size = 24, colour = "black"),
+        axis.title.x = element_text(size = 26, margin = margin(t = 14)),
+        axis.title.y = element_text(size = 26, margin = margin(r = 14)),
+        legend.key.height = unit(1.1, "lines"), legend.key.width = unit(1.8, "lines"),
         legend.box = "vertical", legend.box.just = "right", legend.box.spacing = unit(0, "pt"),
         legend.justification.inside = c(1, 1), legend.location = "plot",
         legend.margin = margin(1, 3, 1, 3),
@@ -264,6 +262,7 @@ CLASS_COLS <- c("Fishery" = col_old, "Climate" = col_sst, "SSB" = "#1F3B73")
 nd <- read_csv(file.path(ALIGNED, "Outputs/derived/fig3b_null_draws.csv"), show_col_types = FALSE) %>%
   mutate(driver = recode(driver,
            "Old fish removed"            = "Proportion of old fish in catch",
+           "Total catch"                 = "Total catch\n(positive association)",
            "Oceanic Nino Index"          = "ONI",
            "Pacific Decadal Oscillation" = "PDO",
            "Spawning stock biomass"      = "SSB"),
@@ -296,19 +295,22 @@ p3r2 <- ggplot() +
              shape = 60, size = 4.5, show.legend = FALSE) +
   geom_text(data = filter(pts, off), aes(x = xpos + 0.022, y = yi + 0.30,
                                          label = sprintf("%.2f", observed)),
-            hjust = 0, size = 4.2, colour = "grey25") +
+            hjust = 0, size = 6.2, colour = "grey25") +
   geom_text(data = pts, aes(x = X_MAX - 0.01, y = yi + 0.18, label = lab),
-            hjust = 1, size = 4.4, colour = "grey25") +
+            hjust = 1, size = 6.8, colour = "grey25") +
   scale_colour_manual(values = CLASS_COLS, breaks = names(CLASS_COLS), name = NULL) +
   guides(colour = guide_legend(override.aes = list(linewidth = 2.2))) +
-  scale_y_continuous(NULL, breaks = seq_along(ord), labels = str_wrap(ord, width = 18),
+  scale_y_continuous(NULL, breaks = seq_along(ord), labels = ifelse(grepl("\n", ord), ord, str_wrap(ord, width = 20)),
                      expand = expansion(add = c(0.18, 0.75))) +
   scale_x_continuous("Variance explained (adjusted R\u00b2)",
                      limits = c(X_MIN, X_MAX), expand = c(0, 0)) +
   theme_science +
-  theme(axis.text.y = element_text(size = 15), panel.grid = element_blank(),
-        legend.position = "bottom", legend.direction = "horizontal",
-        legend.text = element_text(size = 13),
+  theme(axis.text.y = element_text(size = 21, lineheight = 0.9), axis.text.x = element_text(size = 24),
+        axis.title.x = element_text(size = 26, margin = margin(t = 14)),
+        panel.grid = element_blank(),
+        legend.position = "inside", legend.position.inside = c(0.99, 1.0),
+        legend.justification = c(1, 1), legend.direction = "horizontal",
+        legend.text = element_text(size = 20), legend.key.width = unit(2.2, "lines"),
         legend.background = element_rect(fill = alpha("white", 0.85), colour = NA),
         legend.key = element_blank())
 
@@ -319,4 +321,13 @@ ggsave(file.path(OUT, "Fig3b_variance_vs_chance.pdf"),   p3r2, width = 10, heigh
 ## both panels in one file, no a/b tags (labels added by hand in Inkscape)
 ggsave(file.path(OUT, "Figure3_both_panels.pdf"), (p3e | p3r2) + plot_layout(widths = c(1, 1)),
        width = 19, height = 7.5)
+## final Figure 3: both panels with bold a/b tags on a compact canvas (text stays large once placed)
+fig3 <- (p3e | p3r2) + plot_layout(widths = c(1.6, 1)) +
+  plot_annotation(tag_levels = "a") &
+  theme(plot.tag = element_text(size = 44, family = "tagbold"),
+        legend.background = element_blank(), legend.box.background = element_blank())
+ggsave(file.path(OUT, "Figure3_final.pdf"), fig3, width = 24, height = 9.5)
+showtext_opts(dpi = 300)
+ggsave(file.path(OUT, "Figure3_final.png"), fig3, width = 24, height = 9.5, dpi = 300)
+showtext_opts(dpi = 96)
 cat("Saved to", OUT, "\n")

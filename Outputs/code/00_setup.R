@@ -1,5 +1,5 @@
 ## =============================================================================
-##  00_setup.R — shared paths, constants and helpers
+##  00_setup.R - shared paths, constants and helpers
 ##  Pacific herring, Strait of Georgia: spatial collapse & collective memory
 ##
 ##  Sourced by every 0X_*.Rmd in this folder. Nothing here fits a model or
@@ -54,6 +54,12 @@ SOG_REGION <- "SoG"  # DFO stock assessment region in the spawn index. Statistic
 BIO_AREAS  <- c(13, 14, 15, 17, 18)                 # areas with sufficient biosample coverage
 MIN_ACTIVE <- 6      # a section is "historically used" if spawn recorded in >= 6 distinct years
 MIN_FISH   <- 30     # a biosample is used only if it contains >= 30 aged fish
+## Test fishery: all months, seine sets, from 1977. 1975 holds February samples
+## only and no samples exist for 1976, so the series starts in 1977.
+TF_FIRST_YEAR <- 1977
+TF_GEARS      <- c("Seine", "Other seine")
+keep_tf <- function(source, year, gear)
+  source != "Test Fishery" | (year >= TF_FIRST_YEAR & gear %in% TF_GEARS)
 OLD_AGE    <- 5      # "old fish" = age >= 5 (repeat spawners; age-3 are first-time spawners)
 YRS        <- 1951:2024
 BREAK_YEAR <- 1984   # collapse boundary: pre <= 1983, post >= 1984 (largest single-year drop)
@@ -104,9 +110,7 @@ fmt_p <- function(p) ifelse(p < 0.001, "< 0.001", sprintf("= %.3f", p))
 ## ---- shared plotting theme --------------------------------------------------
 ## Two themes live here on purpose:
 ##   theme_herring() - compact, for multi-panel supplementary figures
-##   theme_science   - the published main-figure style (large type, Helvetica),
-##                     ported from Strait_of_Georgia_Pacific_herring 27_05_2026.Rmd
-##                     so main-text panels look identical to the drafted versions.
+##   theme_science   - the main-figure style (large type, Helvetica).
 
 col_occ <- "#555555"; col_old <- "#D73027"; col_sst <- "#3461A8"
 

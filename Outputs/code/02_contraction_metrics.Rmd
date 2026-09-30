@@ -1,5 +1,5 @@
 ---
-title: "02 — Spatial contraction metrics and choice of response variable"
+title: "02 - Spatial contraction metrics and choice of response variable"
 subtitle: "Eleven candidate metrics, PCA, and the justification for section occupancy (Supplementary Table S6)"
 author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
 date: "`r Sys.Date()`"
@@ -25,8 +25,8 @@ contraction**, rather than one arbitrary choice among many. Eleven established m
 the annual spawning distribution are computed from the same per-site annual maxima built in
 `01`, spanning two conceptually distinct families:
 
-* **extent** — how much of the Strait spawning covers;
-* **concentration** — how evenly biomass is divided among the areas that are used.
+* **extent** - how much of the Strait spawning covers;
+* **concentration** - how evenly biomass is divided among the areas that are used.
 
 A PCA of the standardised metrics separates the two families, and the loadings on the
 dominant axis identify which metrics carry the shared contraction signal. This chunk
@@ -148,7 +148,7 @@ glimpse(metrics_all)
 
 ---
 
-## 3  PCA and correlations — Supplementary Table S6
+## 3  PCA and correlations - Supplementary Table S6
 
 ```{r pca}
 mcols <- c("occupancy","kde50_km2","kde95_km2","hull_area_km2","lat_range",
@@ -211,7 +211,7 @@ it carries the shared signal rather than an idiosyncratic one; it is the most di
 interpretable, as the loss of discrete spawning grounds; and it is the most robust to survey
 effort, being a bounded proportion computed from presence rather than from index magnitude.
 Occupancy is identical whether location-years are reduced to their maximum or summed, and it
-is unaffected by any rescaling of index magnitude — the property exploited in `03`.
+is unaffected by any rescaling of index magnitude - the property exploited in `03`.
 
 ---
 

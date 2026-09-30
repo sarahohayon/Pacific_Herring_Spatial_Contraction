@@ -9,11 +9,11 @@
 suppressMessages({library(tidyverse); library(mgcv); library(nlme)})
 set.seed(42)
 B <- 1000
-ALIGNED <- "/Users/sarah/Documents/Postdoc/Canada Research/Pacific herring/CLAUDE CODE/PAPER/Aligned_2026_08_06"
+ALIGNED <- normalizePath("../..")   # repository root; run from Outputs/code
 
 dm <- read_csv(file.path(ALIGNED, "Outputs/derived/annual_series.csv"), show_col_types = FALSE) %>%
   filter(Year %in% 1951:2024, !is.na(occupancy), !is.na(prop_old_wt), !is.na(mean_SST),
-         !is.na(ONI_ann), !is.na(mean_PDO), !is.na(value_per_ton)) %>%
+         !is.na(ONI_ann), !is.na(mean_PDO)) %>%
   arrange(Year) %>%
   mutate(phase = factor(if_else(Year < 1984, "Pre", "Post")))
 cat("n =", nrow(dm), "years | B =", B, "\n")
@@ -27,7 +27,6 @@ DRIVERS <- tribble(
   "catch_total_t",     "Total catch",                              "Amount / value / abundance",
   "old_removed_t",     "Tonnage of old fish removed",              "Amount / value / abundance",
   "old_removed_frac",  "Population fraction of old fish removed",  "Amount / value / abundance",
-  "value_per_ton",     "Value per tonne (real 2024 CAD)",          "Amount / value / abundance",
   "SSB",               "Spawning stock biomass",                   "Amount / value / abundance")
 
 r2_of <- function(d, vars) {

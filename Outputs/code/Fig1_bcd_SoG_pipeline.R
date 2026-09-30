@@ -1,28 +1,25 @@
-## ============================================================
-## Figure 1 b, c, d - Sarah's plotting code ("ONLY PLOTTING" chunk of
-## Strait_of_Georgia_Pacific_herring 27_05_2026.Rmd, lines 5395-5601),
-## fed with the aligned pipeline data so the panels match the statistics:
-##   - spawn records restricted to Region == "SoG"; presence = any spawn record, including
-##     records without a biomass estimate (19 historically-used sections)
-##   - SSB = sum of all spawn records (DFO spawn index)
-##   - series 1951-2024, collapse break 1984
-## Data: PAPER/Aligned_2026_08_06/Outputs/derived (written by 01_data_preparation.Rmd)
-## Run: Rscript Fig1_bcd_SoG_pipeline.R  (from this folder)
-## ============================================================
+## =============================================================================
+## Figure 1 b, c, d
+## b  spawning occupancy (19 historically used sections)
+## c  spawning occupancy against SSB before and after the collapse (hysteresis)
+## d  latitudinal extent of spawning
+## Reads the series written by 01_data_preparation.Rmd.
+## Run from Outputs/code:  Rscript Fig1_bcd_SoG_pipeline.R
+## =============================================================================
 
 suppressMessages({
   library(tidyverse); library(mgcv); library(scales)
   library(patchwork); library(showtext); library(sysfonts)
 })
 
-ALIGNED <- "/Users/sarah/Documents/Postdoc/Canada Research/Pacific herring/CLAUDE CODE/PAPER/Aligned_2026_08_06"
+ALIGNED <- normalizePath("../..")   # repository root; run from Outputs/code
 DERIVED <- file.path(ALIGNED, "Outputs/derived")
 OUT     <- file.path(ALIGNED, "Figures/Main/Figure 1/SoG_sum_2026_09_15")
 dir.create(OUT, showWarnings = FALSE)
 
 YEARS <- 1951:2024
 
-## ---- Style (Rmd lines 54-111, unchanged) ----
+## ---- style ----
 cluster_cols_9 <- c(
   "13" = "#5B8C5A", "15" = "#7EB5D6", "14" = "#E07B3F", "17" = "#3A9E8F",
   "18" = "#3461A8", "19" = "#8B6BAE", "16" = "#C03B3B", "28" = "#2D6A4F",

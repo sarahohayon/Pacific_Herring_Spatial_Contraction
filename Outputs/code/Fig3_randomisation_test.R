@@ -1,23 +1,17 @@
-## ============================================================
-## Randomisation test for the occupancy ~ proportion-of-old-fish relationship
-## (Results 2.3). Asks: is the observed slope stronger than expected if old fish
-## and occupancy were paired at random WITHIN each era?
-##
-## Two null schemes, because both series are strongly autocorrelated:
-##   shuffle  - free permutation of the predictor within era. Destroys the serial
-##              structure as well as the association, so the null is too narrow:
-##              this test is ANTI-CONSERVATIVE (too easy to pass).
-##   shift    - random cyclic shift of the predictor within era (wrap-around).
-##              Keeps the serial structure and destroys only the alignment:
-##              this is the conservative, defensible test.
-##
-## Models: basic (no control) and phase-controlled (pre/post 1984), both gls + AR(1).
-## Run from Outputs/code: Rscript Fig3_randomisation_test.R
-## ============================================================
+## =============================================================================
+## Randomization test of the slope of occupancy on the proportion of older fish (Table S8a)
+## Is the observed slope stronger than when the two series are paired at random?
+##   shift    moves the older-fish series in time with wrap-around, within era or phase.
+##            It keeps the series' own autocorrelation, so this is the test reported.
+##   shuffle  free permutation; it ignores autocorrelation and is shown for comparison.
+## Models: GLS with AR(1) errors, without and with collapse phase as a covariate.
+## Also fits the gear-era model reported in the Results.
+## Run from Outputs/code:  Rscript Fig3_randomisation_test.R
+## =============================================================================
 suppressMessages({library(tidyverse); library(nlme)})
 set.seed(42)
 B <- 1000
-ALIGNED <- "/Users/sarah/Documents/Postdoc/Canada Research/Pacific herring/CLAUDE CODE/PAPER/Aligned_2026_08_06"
+ALIGNED <- normalizePath("../..")   # repository root; run from Outputs/code
 
 dm <- read_csv(file.path(ALIGNED, "Outputs/derived/annual_series.csv"), show_col_types = FALSE) %>%
   filter(Year %in% 1951:2024, !is.na(occupancy), !is.na(prop_old_wt), !is.na(mean_SST)) %>%
@@ -26,6 +20,12 @@ dm <- read_csv(file.path(ALIGNED, "Outputs/derived/annual_series.csv"), show_col
          phase = factor(if_else(Year < 1984, "Pre-collapse", "Post-collapse"),
                         levels = c("Pre-collapse", "Post-collapse")))
 cat(sprintf("n = %d years | %d randomisations per test\n", nrow(dm), B))
+
+## gear era as covariate (Methods; Results "It held likewise after accounting for gear era")
+m_era <- gls(logit_occ ~ era + prop_old_wt, data = dm, correlation = corAR1(form = ~ Year), method = "ML")
+ci_era <- intervals(m_era, which = "coef")$coef["prop_old_wt", ]
+cat(sprintf("Gear-era model: slope = %.2f (95%% CI %.2f to %.2f), P = %.3g\n",
+            ci_era[2], ci_era[1], ci_era[3], summary(m_era)$tTable["prop_old_wt", 4]))
 
 stat_of <- function(x, model) {
   d <- dm; d$prop_old_wt <- x

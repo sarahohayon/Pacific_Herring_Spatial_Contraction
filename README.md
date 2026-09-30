@@ -1,20 +1,20 @@
 # Biomass recovery masks collective memory loss and spatial collapse in Pacific herring
 
-Analysis code for the Strait of Georgia Pacific herring study. Every statistic, table and
-figure in the manuscript, main text and supplement alike, is produced by the files here,
-starting from the raw DFO extracts. Nothing reads a cached result, so a figure and the
-statistic it illustrates cannot drift apart.
+Analysis code for the Strait of Georgia Pacific herring study (Ohayon, Dingwall & Bates).
+Every statistic, table and figure in the paper and its supplement is produced by the files
+here, starting from the raw DFO extracts. Nothing reads a cached result.
 
 ## Layout
 
 ```
-Outputs/code/      the pipeline: 00_setup.R, 01-09, and the figure scripts
-Outputs/derived/   derived series written by 01 and read by everything else
-Outputs/tables/    one CSV per supplementary table, plus supporting tables
-Outputs/figures/   every generated figure, PDF and PNG
-Figures/           final figures as used in the manuscript, assembled from the panels
-Raw_data/          DFO and NOAA inputs (see Data below)
-run_all.R          renders the whole pipeline in order
+Outputs/code/          the analysis: 00_setup.R, 01-09, and the figure scripts
+Outputs/code/extra/    analyses explored during the study but not reported in the paper
+Outputs/derived/       series built by 01 and read by everything else
+Outputs/tables/        one CSV per supplementary table, plus supporting tables
+Outputs/figures/       every generated figure, PDF and PNG
+Figures/               final figures as used in the paper
+Raw_data/              input data (see Data below)
+run_all.R              runs the whole analysis in order
 ```
 
 ## How to run
@@ -23,12 +23,13 @@ run_all.R          renders the whole pipeline in order
 cd Outputs/code && Rscript ../../run_all.R
 ```
 
-`01` must run first: it writes the derived series that everything else reads. It is also the
-only file that needs the restricted DFO extracts, so without them start at `02`, which runs
-from the published `Outputs/derived/` series.
+`01` runs first: it builds the derived series that everything else reads. It is also the only
+step that needs the two DFO extracts that are not in this repository; without them, start at
+`02`, which runs from the series already in `Outputs/derived/`.
 
-Run time is dominated by `01` (a 100 MB biosample file) and `05` (76 GAMM fits); budget about
-15 minutes. If `rmarkdown::render` cannot find pandoc outside RStudio:
+A full run takes about 15 minutes, mostly in `01` (a 100 MB biosample file) and `05` and the
+randomization scripts (thousands of model fits). If `rmarkdown::render` cannot find pandoc
+outside RStudio:
 
 ```bash
 export RSTUDIO_PANDOC="/Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/aarch64"
@@ -38,80 +39,74 @@ export RSTUDIO_PANDOC="/Applications/RStudio.app/Contents/Resources/app/quarto/b
 
 | File | Produces |
 |---|---|
-| `00_setup.R` | paths, analysis constants, presence rule, shared theme and palettes. Sourced by every file; the only place to change the constants below. |
-| `01_data_preparation.Rmd` | all derived series into `Outputs/derived/` |
-| `02_contraction_metrics.Rmd` | eleven contraction metrics and the PCA behind the choice of response: **Table S6** |
-| `03_biomass_occupancy_decoupling.Rmd` | biomass-occupancy decoupling, phenology: **Fig. 1a-f**, **Fig. S1**, **Tables S1, S7** |
-| `04_demography_selectivity.Rmd` | fishery selectivity and age structure: **Fig. 2a-d**, **Fig. S3** |
-| `05_occupancy_drivers_GAMM.Rmd` | driver models, robustness and subset refits: **Fig. 3a-c**, **Figs. S4-S5**, **Tables S2-S5, S7** |
-| `06_spatial_asymmetry_refuge.Rmd` | spatial collapse and the refuge: **Fig. 4a-d** |
-| `07_supplementary_catch_figures.Rmd` | **Figs. S6-S7** |
-| `08_roe_gillnet_age_composition.Rmd` | **Fig. S2** and the age-5 threshold diagnostics |
-| `09_prop_old_by_area.R` | per-area age structure behind the refuge result (Area 14 odds ratios) |
-| `Fig1_bcd_SoG_pipeline.R` | Figure 1 b, c, d in manuscript style, fed by the pipeline series |
+| `00_setup.R` | paths, analysis constants, the presence rule, the test-fishery rule, themes and palettes. Read by every other file. |
+| `01_data_preparation.Rmd` | all derived series in `Outputs/derived/` |
+| `02_contraction_metrics.Rmd` | eleven contraction metrics and the PCA behind the choice of response (**Table S6**) |
+| `03_biomass_occupancy_decoupling.Rmd` | biomass-occupancy decoupling and spawning phenology (**Fig. 1**, **Fig. S1**, **Tables S1, S7**) |
+| `04_demography_selectivity.Rmd` | fishery selectivity and age structure (**Fig. 2**, **Fig. S3**); loss of older fish versus recruitment dilution, mortality and removals at age (**Table S10**) |
+| `05_occupancy_drivers_GAMM.Rmd` | models of spawning occupancy, robustness checks and subset refits (**Figs. S4, S5**, **Tables S2-S5, S7**) |
+| `06_spatial_asymmetry_refuge.Rmd` | spatial collapse, historical exploitation and the Area 14 refuge (**Fig. 4**) |
+| `08_roe_gillnet_age_composition.Rmd` | age composition of the roe-gillnet catch against the test fishery (**Fig. S2**) |
+| `09_prop_old_by_area.R` | older fish in Area 14 versus the peripheral areas (Results) |
+| `Fig1_bcd_SoG_pipeline.R` | Figure 1 b, c, d |
 | `Fig2bcd_manuscript_style.R` | Figure 2 b, c, d |
-| `Fig2c_length_at_age_tests.R` | length-at-age mixed models quoted in the Results |
-| `Fig3b_null_draws.R` | the null draws behind Fig. 3b, **Table S8** and the randomisation P values in the text |
-| `Fig3b_sst_increment_test.R` | what SST adds beyond selectivity (the increment test in Table S8) |
-| `Fig3_randomisation_test.R`, `Fig3_randomisation_R2_by_driver.R` | slope and variance randomisations (**Table S8**) |
-| `Fig3_manuscript_style.R` | Figure 3 panels a and b, drawn from those null draws |
+| `Fig2c_length_at_age_tests.R` | length-at-age tests quoted in the Results |
+| `Fig3b_null_draws.R`, `Fig3b_null_draws_extra.R` | randomization nulls for Figure 3b and **Table S8b** |
+| `Fig3b_sst_increment_test.R` | whether SST adds to the older-fish model (**Table S8c**) |
+| `Fig3_randomisation_test.R` | slope randomizations and the gear-era model (**Table S8a**) |
+| `Fig3_manuscript_style.R` | Figure 3 a, b |
 
-Main-text figures are written twice: one file per panel (`Fig1a_SSB`, `Fig4c_site_loss_vs_exploitation`,
-and so on) for assembling the final layout, and one pre-assembled composite
-(`Figure1_biomass_occupancy_decoupling`, `Figure4_four_panels_untagged`) for checking that the
-figure reads as a whole. The rendered HTML report beside each Rmd carries its printed output.
+Main-text figures are saved both as single panels (for assembling the final layout) and as a
+combined figure. The HTML report next to each `.Rmd` holds its printed output.
 
-## The decisions that propagate everywhere
+The scripts in `extra/` (a roe-era summary, the comparison with other BC stocks, age-specific
+exploitation and supplementary catch plots) were used to check the results but are not
+reported in the paper; some of them need DFO data that are not in this repository.
 
-They live at the top of `00_setup.R` and are stated in the Methods:
+## Decisions used throughout
+
+They are set at the top of `00_setup.R` and described in the Methods.
 
 * **Presence rule** (`keep_surveyed`): a spawn record counts as presence if it was surveyed,
-  including records DFO leaves without a biomass estimate; records DFO classes as *Incomplete*
-  are excluded, because that category first appears in the 1990s and would add presence only
-  after the collapse. Of 5,751 Strait of Georgia records, 257 carry no biomass estimate: 115 are
-  surveyed and kept, 142 are Incomplete and dropped. Table S7 shows the results under all three
-  possible rules.
-* `MIN_ACTIVE = 6` - a section is historically used if spawn was recorded there in at least six
-  distinct years, giving the occupancy denominator of **19 sections**.
-* `MIN_FISH = 30` - a biosample is used only if it holds at least 30 aged fish.
-* `OLD_AGE = 5` - old fish are age 5 and older, separating repeat spawners from first-time
-  spawners at age 3.
-* `BREAK_YEAR = 1984` - the collapse boundary, set at the largest single-year decline in
-  occupancy; change-point analysis places the structural break after 1978 (95% CI 1977-1980).
-* **Map rule** (in `06`): the two-period maps show sites in regular use, meaning at least 2 spawn
-  years in any 5-year moving window within the period.
+  including records without a biomass estimate; records DFO classes as *Incomplete* are
+  excluded, because that category first appears in the 1990s and would add presence only after
+  the collapse. Table S7 repeats the results under the two alternative rules.
+* **Historically used sections** (`MIN_ACTIVE = 6`): spawn recorded in at least six years,
+  giving 19 sections.
+* **Biosamples** (`MIN_FISH = 30`): a sample is used only if it holds at least 30 aged fish.
+* **Older fish** (`OLD_AGE = 5`): age 5 and older.
+* **Test fishery** (`keep_tf`): all months, seine sets, from 1977. The 1975 samples were
+  collected in February only, and there are no samples for 1976.
+* **Collapse boundary** (`BREAK_YEAR = 1984`): the year of the largest single-year decline in
+  occupancy.
+* **Map rule** (in `06`): the two-period maps show sites used in at least 2 years of any
+  5-year window.
 
-## Two data objects that look alike and are not
-
-`01` writes both `site_year_spawn.csv` and `site_year_spawn_all.csv`. The first requires a
-location to have coordinates and feeds anything that places spawning in space (contraction
-metrics, maps, per-area change). The second keeps every record and feeds the site-level
-occupancy histories, so a site is never dropped from its own history for lacking a position.
-Ten records in the Strait have no coordinates; using the wrong object shifts the site-loss
-counts by one site.
+`01` writes two site-by-year files. `site_year_spawn.csv` keeps only records with coordinates
+and is used for anything placed in space (contraction metrics, maps, per-area change).
+`site_year_spawn_all.csv` keeps every record and is used for site occupancy histories, so a
+site is never dropped from its own history for lacking a position.
 
 ## Data
 
-| File | Source | In this repository |
+| File | Source | Included |
 |---|---|---|
 | `Pacific_herring_spawn_index_data_2025_EN.csv` | DFO Pacific Herring Spawn Index, 1951-2025 | yes |
-| `Lighthouse_Stations_SST_Combined.csv` | DFO BC lighthouse SST programme | yes |
+| `Lighthouse_Stations_SST_Combined.csv` | DFO BC lighthouse sea-surface temperature | yes |
 | `ONI_index_1950_2025.csv`, `PDO_1854_2025.csv` | NOAA climate indices | yes |
-| `Pacific herring catch and landed value dfo_INFLATION.xlsx` | DFO landed value with CPI deflator | yes |
+| `Pacific herring catch and landed value dfo_INFLATION.xlsx` | DFO landed value, deflated with the CPI | yes |
 | `SOG_TAC.csv` | total allowable catch | yes |
 | `sections/SectionsIntegrated.shp` | DFO herring section boundaries | yes |
-| `Biosample_Strait_of_Georgia.csv` | DFO herring biosample database, SoG extract, 1946-2024 | no, available from DFO on request |
-| `SOG_herring_catch_all_fishing_types*.csv` | DFO commercial catch by season, area, fishery, gear | no, available from DFO on request |
+| `Biosample_Strait_of_Georgia.csv` | DFO herring biosample database, Strait of Georgia, 1946-2024 | no, available from DFO on request |
+| `SOG_herring_catch_all_fishing_types*.csv` | DFO commercial catch by season, area, fishery and gear | no, available from DFO on request |
 
-The two restricted extracts are the only inputs not included. Every series derived from them is
-published in `Outputs/derived/`, so `02` onward reproduce without them.
+Every series derived from the two restricted extracts is included in `Outputs/derived/`.
 
-The biosample file ships from DFO without a usable header row; column names are assigned
-positionally from `BIO_COLS` in `00_setup.R`, and the two-digit sampling year is recoded to a
-calendar year with a century break at 29/30.
+The biosample extract has no usable header row; column names are assigned from `BIO_COLS` in
+`00_setup.R`, and two-digit years are converted to calendar years.
 
 ## Requirements
 
-R 4.5 or later. Packages: tidyverse, mgcv, nlme, lme4, segmented, strucchange, sf, adehabitatHR,
-spdep, geosphere, ineq, rnaturalearth (with rnaturalearthhires), gratia, patchwork, ggrepel,
-showtext, scales, knitr, rmarkdown.
+R 4.5 or later, with tidyverse, mgcv, nlme, lme4, segmented, strucchange, sf, adehabitatHR,
+spdep, geosphere, ineq, rnaturalearth (and rnaturalearthhires), gratia, patchwork, ggrepel,
+showtext, scales, knitr and rmarkdown.

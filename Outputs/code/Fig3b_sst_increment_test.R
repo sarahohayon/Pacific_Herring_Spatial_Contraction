@@ -1,14 +1,12 @@
-## ============================================================
-## Does SST add more than chance BEYOND the fishery predictor?
-## Null: shift SST in time within each collapse phase (wrap-around) while leaving the
-## proportion of old fish intact, refit prop_old + SST, and record the gain in adjusted R2
-## over prop_old alone. B = 1000. This tests the increment, unlike the earlier test that
-## scrambled both predictors at once.
-## Run from Outputs/code: Rscript Fig3b_sst_increment_test.R
-## ============================================================
+## =============================================================================
+## Does SST add more to the older-fish model than chance would? (Table S8c)
+## SST is shifted in time within collapse phase while older fish is left unchanged; each time
+## older fish + SST is refitted and the gain in adjusted R2 is recorded (1,000 times).
+## Run from Outputs/code:  Rscript Fig3b_sst_increment_test.R
+## =============================================================================
 suppressMessages({library(tidyverse); library(mgcv); library(nlme)})
 set.seed(42); B <- 1000
-ALIGNED <- "/Users/sarah/Documents/Postdoc/Canada Research/Pacific herring/CLAUDE CODE/PAPER/Aligned_2026_08_06"
+ALIGNED <- normalizePath("../..")   # repository root; run from Outputs/code
 dm <- read_csv(file.path(ALIGNED, "Outputs/derived/annual_series.csv"), show_col_types = FALSE) %>%
   filter(Year %in% 1951:2024, !is.na(occupancy), !is.na(prop_old_wt), !is.na(mean_SST)) %>%
   arrange(Year) %>% mutate(phase = factor(if_else(Year < 1984, "Pre", "Post")))

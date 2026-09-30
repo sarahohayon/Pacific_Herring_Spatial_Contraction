@@ -1,35 +1,41 @@
 ## ---------------------------------------------------------------------------
-## Reproduce every statistic and figure in the manuscript, in the order the
-## paper presents them.
+## Reproduce every statistic, table and figure in the paper, in order.
 ##
 ##   cd Outputs/code && Rscript ../../run_all.R
 ##
-## or open Herring_analysis.Rproj in RStudio and source this file.
+## 01 runs first: it builds the derived series that everything else reads, and it
+## is the only step that needs the two DFO extracts that are not in this
+## repository (see README). Without them, start at 02: the derived series in
+## Outputs/derived/ are enough to run everything else.
 ##
-## 01 must run first: it writes the derived series that everything else reads.
-## 01 is also the only file that needs the two restricted DFO extracts (see
-## README). Without them, start at 02: the published Outputs/derived/ series
-## carry every input the later steps use.
+## Each step runs in its own R session. Scripts in extra/ are not part of the paper.
 ## ---------------------------------------------------------------------------
 
 if (!file.exists("00_setup.R"))
-  stop("Run this from Outputs/code/ (the folder holding 00_setup.R).")
+  stop("Run this from Outputs/code/ (the folder that holds 00_setup.R).")
 
-reports <- sort(list.files(pattern = "^0[1-8].*\\.Rmd$"))
+reports <- sort(list.files(pattern = "^0[1-8].*\\.Rmd$"))   # 01-06 and 08
 
 scripts <- c(
-  "09_prop_old_by_area.R",           # per-area age structure behind the refuge result
-  "Fig1_bcd_SoG_pipeline.R",         # Figure 1 b, c, d
-  "Fig2bcd_manuscript_style.R",      # Figure 2 b, c, d
-  "Fig2c_length_at_age_tests.R",     # length-at-age mixed models (Results)
-  "Fig3b_null_draws.R",              # null draws: Fig 3b, Table S8 and the text P values
-  "Fig3b_sst_increment_test.R",      # what SST adds beyond selectivity
-  "Fig3_randomisation_test.R",       # slope randomisations (Table S8)
-  "Fig3_randomisation_R2_by_driver.R",
-  "Fig3_manuscript_style.R"          # Figure 3 panels, drawn from the null draws above
+  "09_prop_old_by_area.R",          # Area 14 versus the peripheral areas (Results)
+  "Fig1_bcd_SoG_pipeline.R",        # Figure 1 b, c, d
+  "Fig2bcd_manuscript_style.R",     # Figure 2 b, c, d
+  "Fig2c_length_at_age_tests.R",    # length-at-age tests (Results)
+  "Fig3b_null_draws.R",             # randomization nulls for Figure 3b and Table S8b
+  "Fig3b_null_draws_extra.R",       # ... the remaining drivers (run after the line above)
+  "Fig3b_sst_increment_test.R",     # does SST add to older fish? (Table S8c)
+  "Fig3_randomisation_test.R",      # slope randomizations and gear-era model (Table S8a)
+  "Fig3_manuscript_style.R"         # Figure 3 a, b
 )
 
-for (f in reports) { message("== render ", f); rmarkdown::render(f, quiet = TRUE) }
-for (f in scripts) { message("== run    ", f); source(f, echo = FALSE) }
+for (f in reports) {
+  message("== render ", f)
+  rmarkdown::render(f, quiet = TRUE, envir = new.env())
+}
+for (f in scripts) {
+  message("== run    ", f)
+  status <- system2("Rscript", f)
+  if (status != 0) stop(f, " failed")
+}
 
-message("\nDone. Derived series in ../derived, tables in ../tables, figures in ../figures.")
+message("\nDone. Derived series in Outputs/derived, tables in Outputs/tables, figures in Outputs/figures.")

@@ -1,21 +1,23 @@
-## ============================================================
-## Figure 2c - statistical tests for length-at-age (Results 2.2, Fig. 2c caption)
-## Test-fishery fish, statistical areas 13, 14, 15, 17, 18, ages 2-8, from Data/Biosample_sog.csv
-##  1  1980 -> 1983 drop: linear mixed model, length ~ age class * year + (1 | sample);
-##     LRT for the drop and for the age x year interaction (is the drop larger in older fish?);
-##     robustness: statistical area and month added as fixed effects
-##  2  post-collapse decline: annual mean length-at-age 1984-2024 (ages 2-7), GLS with AR(1) within age class
-## Run from Outputs/code: Rscript Fig2c_length_at_age_tests.R
-## ============================================================
+## =============================================================================
+## Figure 2c: tests of length-at-age reported in the Results
+## Test-fishery fish, statistical areas 13, 14, 15, 17 and 18, ages 2-8.
+## 1. The 1980-1983 drop: linear mixed model (length ~ age x year, sample as a random
+##    intercept), with likelihood-ratio tests for the drop and for a larger drop in older
+##    fish; refitted with statistical area (and month, when both years have several) added.
+## 2. The decline after 1984: annual mean length-at-age, GLS with AR(1) errors within age.
+## Run from Outputs/code:  Rscript Fig2c_length_at_age_tests.R
+## =============================================================================
 suppressMessages({library(tidyverse); library(lme4); library(nlme)})
-BASE <- "/Users/sarah/Documents/Postdoc/Canada Research/Pacific herring/CLAUDE CODE"
-b <- read_csv(file.path(BASE, "Data/Biosample_sog.csv"), show_col_types = FALSE, guess_max = 100000) %>%
-  mutate(Year = as.integer(Year), age = suppressWarnings(as.numeric(age)),
+source("00_setup.R")
+b <- read_csv(F_BIO, show_col_types = FALSE, name_repair = "minimal", guess_max = 100000) %>%
+  setNames(BIO_COLS) %>%
+  mutate(Year = as.integer(recode_two_digit_year(year)), age = suppressWarnings(as.numeric(age)),
          length_mm = suppressWarnings(as.numeric(length_mm)),
          stat_area = suppressWarnings(as.numeric(stat_area)),
          sample_id = paste(Year, season, sample_number)) %>%
   filter(stock_assessment_region == "Strait of Georgia", stat_area %in% c(13,14,15,17,18),
-         source == "Test Fishery", !is.na(age), !is.na(length_mm), age %in% 2:8)
+         source == "Test Fishery", !is.na(age), !is.na(length_mm), age %in% 2:8,
+         Year >= 1977, gear %in% c("Seine", "Other seine"))   # all months, seine, from 1977
 
 ## ---- Test 1: the 1980 -> 1983 drop, and whether it was larger in older fish ----
 d1 <- b %>% filter(Year %in% c(1980, 1983)) %>%

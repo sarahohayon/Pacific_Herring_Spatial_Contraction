@@ -1,17 +1,17 @@
-## ============================================================
-## Null distributions of adjusted R2 for Figure 3b
-## Same randomisation as Fig3_randomisation_R2_by_driver.R (shift within collapse phase,
-## B = 1000), but every draw is kept so the null can be drawn as a distribution.
-## Run from Outputs/code: Rscript Fig3b_null_draws.R
-## ============================================================
+## =============================================================================
+## Null distributions of variance explained, for Figure 3b and Table S8b
+## Each driver is fitted alone (AR(1) GAMM); its null comes from 1,000 shifts of the driver
+## in time within collapse phase. Every draw is kept so the null can be plotted.
+## Run from Outputs/code:  Rscript Fig3b_null_draws.R, then Fig3b_null_draws_extra.R
+## =============================================================================
 suppressMessages({library(tidyverse); library(mgcv); library(nlme)})
 set.seed(42)
 B <- 1000
-ALIGNED <- "/Users/sarah/Documents/Postdoc/Canada Research/Pacific herring/CLAUDE CODE/PAPER/Aligned_2026_08_06"
+ALIGNED <- normalizePath("../..")   # repository root; run from Outputs/code
 
 dm <- read_csv(file.path(ALIGNED, "Outputs/derived/annual_series.csv"), show_col_types = FALSE) %>%
   filter(Year %in% 1951:2024, !is.na(occupancy), !is.na(prop_old_wt), !is.na(mean_SST),
-         !is.na(ONI_ann), !is.na(mean_PDO), !is.na(value_per_ton)) %>%
+         !is.na(ONI_ann), !is.na(mean_PDO)) %>%
   arrange(Year) %>% mutate(phase = factor(if_else(Year < 1984, "Pre", "Post")))
 
 DRIVERS <- tribble(
@@ -19,7 +19,6 @@ DRIVERS <- tribble(
   "prop_old_wt",   "Old fish removed",        "Selectivity",
   "catch_total_t", "Total catch",             "Other",
   "mean_SST",      "Mean SST",                "Other",
-  "value_per_ton", "Value per tonne",         "Other",
   "SSB",           "Spawning stock biomass",  "Other")
 
 r2_of <- function(d, v) {

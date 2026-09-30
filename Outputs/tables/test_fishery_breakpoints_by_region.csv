@@ -1,0 +1,6 @@
+region,n_years,first,last,supF,P,break_year,CI,before,after,change_pct
+Strait of Georgia,48,1975,2024,9,0.0376,1983,1977-1999,29,21,-28
+West Coast Vancouver Island,24,1975,2005,10,0.0267,1994,1975-2005,40,28,-30
+Central Coast,27,1975,2014,2,0.771,1996,1975-2014,49,39,-20
+Prince Rupert District,39,1975,2023,2,0.8,1985,1975-2023,32,43,34
+Haida Gwaii,12,1975,1999,NA,NA,NA,NA,NA,NA,NA

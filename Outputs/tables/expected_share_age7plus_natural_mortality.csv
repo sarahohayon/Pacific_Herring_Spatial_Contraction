@@ -1,0 +1,6 @@
+source,M,expected % aged >= 7
+"DFO 2022, 5%",0.261,26
+"DFO 2022, median",0.467,13.4
+"DFO 2022, 95%",0.783,4.2
+Then et al. 2015 (t_max = 10),0.594,8.5
+Hamel & Cope 2022 (t_max = 10),0.54,10.3

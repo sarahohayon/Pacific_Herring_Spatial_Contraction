@@ -1,0 +1,6 @@
+transition,n_Pre-collapse,n_Collapse,n_Post-collapse,Z_Pre-collapse,Z_Collapse,Z_Post-collapse,S_Pre-collapse,S_Collapse,S_Post-collapse,post - pre dZ,P (post vs pre)
+3-4,6,3,37,0.26,0.58,0.27,0.77,0.56,0.76,-0.03,0.86
+4-5,6,3,37,0.55,1.02,0.71,0.58,0.36,0.49,0.23,0.11
+5-6,6,3,37,0.62,1.19,0.89,0.54,0.3,0.41,0.22,0.11
+6-7,5,3,35,1.03,1.45,1.02,0.36,0.23,0.36,0.18,0.34
+7-8,4,2,17,0.97,1.71,0.99,0.38,0.18,0.37,0.18,0.37

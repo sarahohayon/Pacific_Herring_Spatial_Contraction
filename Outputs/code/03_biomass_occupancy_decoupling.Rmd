@@ -1,5 +1,5 @@
 ---
-title: "03 — Biomass recovery without spatial recovery"
+title: "03 - Biomass recovery without spatial recovery"
 subtitle: "Results 2.1: change-point, hysteresis, matched-biomass contrast, and the survey-rescaling sensitivity (Supplementary Table S1)"
 author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
 date: "`r Sys.Date()`"
@@ -81,7 +81,7 @@ cat(sprintf("Decline in occupied sections: %.0f%%\n",
 ### The contraction precedes the change in survey method
 
 Dive surveys began in the Strait of Georgia in 1985 and immediately dominated the index. The contraction occurred in 1984, while
-every spawn record in the Strait was still a surface survey — so it cannot be an artefact of
+every spawn record in the Strait was still a surface survey - so it cannot be an artefact of
 the method transition.
 
 ```{r survey-method}
@@ -158,13 +158,13 @@ cat(sprintf("At equivalent biomass: pre %.0f%% (n = %d) vs post %.0f%% (n = %d)\
 
 ---
 
-## 3  Supplementary Table S1 — sensitivity to rescaling the surface-survey index
+## 3  Supplementary Table S1 - sensitivity to rescaling the surface-survey index
 
 Surface and dive surveys are not on the same scale: surface surveys used subjective
 intensity categories before 1978 and systematically underestimate spawn width, a direct
 multiplier on biomass. DFO estimates separate index scaling parameters for the two periods
 (q₁, q₂). The comparison above is therefore repeated with the surface-era index (≤ 1987, DFO's q₁ period)
-multiplied by a factor *k* spanning the full plausible range — from no correction (k = 1) up
+multiplied by a factor *k* spanning the full plausible range - from no correction (k = 1) up
 to and beyond the value that **eliminates the apparent recovery entirely**, i.e. that makes
 mean pre-collapse biomass equal mean post-collapse biomass.
 
@@ -258,7 +258,7 @@ occ_lat %>% group_by(phase) %>%
             .groups = "drop") %>%
   kable(caption = "Latitudinal distribution of occupied spawning locations, before and after the collapse")
 
-## biomass-weighted centre of gravity — tests for a directional shift
+## biomass-weighted centre of gravity - tests for a directional shift
 cog <- site_year %>% filter(spawn_bio > 0) %>% group_by(Year) %>%
   summarise(cog_lat = weighted.mean(Latitude, spawn_bio), .groups = "drop") %>%
   mutate(phase = if_else(Year < BREAK_YEAR, "Pre-collapse", "Post-collapse"))
@@ -337,8 +337,8 @@ print(env)
 
 ### Spawning waves within a site-year
 
-A site-year can carry several spawn records. Most are concurrent — 62% of consecutive
-records at the same site-year overlap or share a start date — and those are one spawning
+A site-year can carry several spawn records. Most are concurrent - 62% of consecutive
+records at the same site-year overlap or share a start date - and those are one spawning
 episode mapped in pieces, which is what the per-site annual maximum removes. Records
 separated by a week or more are a different quantity: they are successive spawning events at
 the same place. Hourston & Haegele (1980) describe exactly this, "two waves of spawning" at
@@ -431,7 +431,7 @@ surface-survey site-years are also fewer and are the subset that did not warrant
 survey, which is why the method-adjusted model is the one quoted.
 
 ```{r figS1, fig.width=9, fig.height=6}
-## Supplementary Figure S1 — each point is a spawn event, placed by its start day
+## Supplementary Figure S1 - each point is a spawn event, placed by its start day
 ## of year and scaled by biomass, so the compression of the season is visible
 ## directly rather than only through the monthly shares tabulated above.
 season_pts <- spawn_raw %>%
@@ -462,7 +462,7 @@ pS1
 
 ---
 
-## 6  Figure 1 — the assembled panels
+## 6  Figure 1 - the assembled panels
 
 All six panels of Figure 1 are built here from the derived series, so the figure and the
 statistics above can never diverge. Panels **a** and **b** plot the same `SSB` and

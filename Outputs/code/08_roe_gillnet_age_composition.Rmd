@@ -1,6 +1,6 @@
 ---
-title: "08 — Age composition of the roe-gillnet catch"
-subtitle: "Which ages the gillnets actually took, and until when — the removal side of the picture that Fig. 2c/2d shows for the population"
+title: "08 - Age composition of the roe-gillnet catch"
+subtitle: "Which ages the roe gillnets took, compared with the test fishery (Fig. S2)"
 author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
 date: "`r Sys.Date()`"
 output:
@@ -20,7 +20,7 @@ library(patchwork); library(scales); library(knitr)
 
 Figure 2c/2d track the **population** through the test fishery. This file tracks the
 **removal**: the age composition of what the roe gillnets actually landed, year by year.
-The two are complementary, and the question here is a specific one — which age classes were
+The two are complementary, and the question here is a specific one - which age classes were
 present in the nets, and until when did each one last appear in quantity.
 
 ```{r data}
@@ -36,7 +36,7 @@ bio <- bio_raw %>%
   filter(stat_area %in% BIO_AREAS, !is.na(age), age >= 1)
 
 gn <- bio %>% filter(source == "Roe Fishery", gear == "Gillnet")
-tf <- bio %>% filter(source == "Test Fishery")
+tf <- bio %>% filter(source == "Test Fishery", keep_tf(source, Year, gear))   # all months, seine, from 1977
 
 ## keep only years with an adequate sample
 gn_ok <- gn %>% count(Year) %>% filter(n >= MIN_FISH) %>% pull(Year)
@@ -174,7 +174,7 @@ tail_stats %>%
 
 ---
 
-## 4  Supplementary Figure S2 — where the gear starts selecting
+## 4  Supplementary Figure S2 - where the gear starts selecting
 
 This is the figure that justifies the age-5 threshold. Panel a is the test fishery, which
 samples the spawning aggregation each spring; panel b is the roe-gillnet catch. Both are
@@ -192,7 +192,7 @@ spawning aggregation, and it is fishery-independent in the sense that it is not 
 landing. It is *not* an unfished baseline. By 1975, when it begins, the population had
 already been through half a century of reduction fishing, the 1967 collapse, a four-year
 closure and three years of the roe fishery. Panel a therefore shows the age structure of an
-**exploited** population, not a natural one — the comparison in this figure is between what
+**exploited** population, not a natural one - the comparison in this figure is between what
 the gear takes and what the already-truncated aggregation contains, which if anything makes
 the selectivity contrast conservative.
 
@@ -211,11 +211,12 @@ age_labels  <- c("2"="≤ 2", "3"="3", "4"="4", "5"="5", "6"="6",
                  "7"="7", "8"="8", "9"="9", "10"="10+")
 AGES_CMP <- 2:10
 
-panel_lab <- c("Test fishery" = "a  Test fishery — the exploited spawning population",
-               "Roe gillnet"  = "b  Roe gillnet — the catch")
+## plotmath labels so only the panel letter is bold (strips parsed with label_parsed)
+panel_lab <- c("Test fishery" = 'bold("a")~~"Test fishery"',
+               "Roe gillnet"  = 'bold("b")~~"Roe gillnet fishery"')
 
 ## An age class absent from a given year has no row, and geom_area then draws that
-## band straight from the previous year it appeared in to the next — which stacks
+## band straight from the previous year it appeared in to the next - which stacks
 ## out of register with the bands that do have a point at the missing year, and
 ## makes the column overshoot 100%. Completing the grid with explicit zeros fixes
 ## it: every age class has a value in every sampled year.
@@ -250,9 +251,9 @@ figS2 <- ggplot(comp2, aes(Year, prop, fill = age_f)) +
            fill = NA, colour = "black", linewidth = 0.5, linetype = "22") +
   annotate("segment", x = GOLD[1], xend = GOLD[2], y = 1.035, yend = 1.035,
            colour = "black", linewidth = 0.5) +
-  annotate("text", x = mean(GOLD), y = 1.055, label = "1978–79 gold rush",
+  annotate("text", x = mean(GOLD), y = 1.055, label = "1978-79 gold rush",
            size = 3.3, vjust = 0, fontface = "italic") +
-  facet_wrap(~ source, nrow = 1) +
+  facet_wrap(~ source, nrow = 1, labeller = label_parsed) +
   scale_fill_manual(values = setNames(unname(age_palette[as.character(rev(AGES_CMP))]),
                                       unname(age_labels[as.character(rev(AGES_CMP))])),
                     name = "Age",
@@ -264,14 +265,14 @@ figS2 <- ggplot(comp2, aes(Year, prop, fill = age_f)) +
   ## though the test fishery series starts three years later than the gillnet one
   scale_x_continuous(breaks = seq(1975, 2020, 10), limits = c(1972, 2024),
                      expand = expansion(mult = c(0, 0))) +
-  labs(x = NULL, y = "Proportion of aged sample",
-       title = "Supplementary Figure S2. Age composition of the exploited population and of the gillnet catch",
-       subtitle = paste("Black line marks the age-4/age-5 boundary; everything above it is an",
-                        "old fish (age ≥ 5) as defined in this study.")) +
+  ## no title: the figure is described by its legend in the Supplement
+  labs(x = NULL, y = "Proportion of aged sample") +
   theme_herring(12) +
-  theme(strip.text = element_text(face = "bold", size = 12, hjust = 0),
-        panel.spacing.x = unit(14, "pt"),
-        plot.title = element_text(size = 13))
+  theme(strip.text = element_text(face = "plain", size = 15, hjust = 0),
+        axis.text  = element_text(size = 14, colour = "black"),
+        axis.title = element_text(size = 15),
+        legend.text = element_text(size = 13), legend.title = element_text(size = 14),
+        panel.spacing.x = unit(14, "pt"))
 
 save_fig(figS2, "FigureS2_age_composition_population_vs_gillnet", width = 13, height = 6)
 figS2
@@ -288,7 +289,7 @@ comp2 %>% group_by(source, Year) %>% summarise(total = sum(prop), .groups = "dro
 
 ### Dating the gold rush
 
-The "herring gold rush" is marked at **1978–1979**, and the two series that define it peak in
+The "herring gold rush" is marked at **1978-1979**, and the two series that define it peak in
 consecutive years: catch peaks in 1978 and the real price per tonne peaks in 1979.
 
 ```{r goldrush}
@@ -300,7 +301,7 @@ annual %>% filter(Year %in% 1972:1985) %>%
   kable(caption = "Catch and real landed value per tonne through the gold-rush years")
 
 gr <- annual %>% filter(!is.na(value_per_ton))
-cat(sprintf("Peak real value: %s CAD/t in %d — %.1f times the next-highest year (%s CAD/t in %d)\n",
+cat(sprintf("Peak real value: %s CAD/t in %d - %.1f times the next-highest year (%s CAD/t in %d)\n",
             format(round(max(gr$value_per_ton)), big.mark = ","),
             gr$Year[which.max(gr$value_per_ton)],
             max(gr$value_per_ton)/max(gr$value_per_ton[-which.max(gr$value_per_ton)]),
@@ -347,7 +348,7 @@ kable(cross, caption = paste("Over-representation of each age class in the roe-g
 
 ## 5  Assembled diagnostic figure
 
-Panels a–c are diagnostics, not manuscript figures; only the age-by-age comparison above is
+Panels a-c are diagnostics, not manuscript figures; only the age-by-age comparison above is
 carried into the Supplement.
 
 ```{r assemble, fig.width=13, fig.height=11}

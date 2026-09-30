@@ -1,5 +1,5 @@
 ---
-title: "01 — Data preparation"
+title: "01 - Data preparation"
 subtitle: "Raw DFO files to the derived annual and site-level series used by every downstream analysis"
 author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
 date: "`r Sys.Date()`"
@@ -21,7 +21,7 @@ library(readxl)
 
 This file turns the raw DFO extracts in `Raw_data/` into the derived series that
 every other script reads. Nothing here is a result; every modelling decision that
-*is* a result lives in `02`–`06`. Run this first — the other files read the CSVs it
+*is* a result lives in `02`-`06`. Run this first - the other files read the CSVs it
 writes to `Outputs/derived/`.
 
 Four DFO datasets and three climate indices are used, as described in Methods
@@ -32,11 +32,11 @@ Four DFO datasets and three climate indices are used, as described in Methods
 | `annual_series.csv` | one row per year: occupancy, SSB, prop_old, catch, climate, value | 03, 05 |
 | `section_year.csv` | section × year spawn biomass and presence on the historically-used sections | 02, 03 |
 | `site_year_spawn.csv` | location × year spawn biomass (per-site annual maximum) | 02, 06 |
-| `test_fishery_age.csv` | annual test-fishery age structure, 1975–2024 | 04 |
+| `test_fishery_age.csv` | annual test-fishery age structure, 1977-2024 | 04 |
 | `biosample_annual_by_source.csv` | annual age composition by sampling source and gear | 04 |
 | `catch_decomposition.csv` | catch by year × fishery × season × gear × area | 04 |
 | `site_occupancy_dataset.csv` | site × year presence/absence with predictors | 06 |
-| `area_exploitation.csv` | area-level historical exploitation rate, 1951–1983 | 06 |
+| `area_exploitation.csv` | area-level historical exploitation rate, 1951-1983 | 06 |
 
 ---
 
@@ -50,7 +50,7 @@ event**. Everything downstream is built on these per-site annual maxima.
 
 A section is **occupied** in a year if any spawn record exists there, including records for
 which DFO gives no biomass estimate. A section counts as **historically used** if spawn was recorded there in at least
-`MIN_ACTIVE` (= `r MIN_ACTIVE`) distinct years across 1951–2024. This is a data-driven
+`MIN_ACTIVE` (= `r MIN_ACTIVE`) distinct years across 1951-2024. This is a data-driven
 threshold falling in a natural gap in the distribution of years-active, and it defines the
 occupancy denominator `N_all`.
 
@@ -190,7 +190,7 @@ cat(sprintf("Biosample rows: %s | aged fish: %s | years %d-%d\n",
             format(sum(!is.na(bio$age)), big.mark = ","),
             min(bio$Year, na.rm = TRUE), max(bio$Year, na.rm = TRUE)))
 
-## temporal coverage by statistical area — justifies restricting to BIO_AREAS
+## temporal coverage by statistical area - justifies restricting to BIO_AREAS
 bio %>% filter(!is.na(age)) %>% group_by(stat_area) %>%
   summarise(n_years = n_distinct(Year), n_fish = n(), .groups = "drop") %>%
   arrange(desc(n_years)) %>% print(n = 20)
@@ -241,7 +241,7 @@ gear_prop <- bio %>%
 
 ## annual age composition by sampling source (Fig. 2b) and by source x gear
 bio_by_source <- bio %>%
-  filter(stat_area %in% BIO_AREAS, !is.na(age), age >= 1) %>%
+  filter(stat_area %in% BIO_AREAS, !is.na(age), age >= 1, keep_tf(source, Year, gear)) %>%
   mutate(gear_grp = gear_group(gear),
          src = case_when(
            source == "Reduction Fishery" ~ "Reduction",
@@ -269,13 +269,12 @@ write_csv(bio_by_source, file.path(DERIVED, "biosample_annual_by_source.csv"))
 
 The test fishery began in 1975 and samples during the spawning season, so it is the closest
 available fishery-independent index of the spring spawning population. Restricted to
-seine gear in March–May, matching the change-point analysis in `04`.
+seine sets in all months from 1977, matching every other test-fishery analysis.
 
 ```{r test-fishery}
 test_age <- bio %>%
   filter(source == "Test Fishery",
-         gear %in% c("Seine", "Other seine"),
-         month_n %in% 3:5,
+         keep_tf(source, Year, gear),          # all months, seine, from 1977
          !is.na(age), age >= 1) %>%
   group_by(Year) %>%
   summarise(n_fish    = n(),
@@ -283,11 +282,13 @@ test_age <- bio %>%
             sd_age    = sd(age),
             n_age4    = sum(age >= 4), n_age5 = sum(age >= 5), n_age6 = sum(age >= 6),
             n_age7    = sum(age >= 7), n_juv  = sum(age <= 3),
+            n_age3    = sum(age == 3), n_age12 = sum(age <= 2),
             .groups   = "drop") %>%
   filter(n_fish >= MIN_FISH) %>%
   mutate(prop_age4 = n_age4/n_fish, prop_age5 = n_age5/n_fish,
          prop_age6 = n_age6/n_fish, prop_age7 = n_age7/n_fish,
          prop_juv  = n_juv /n_fish,
+         prop_age3 = n_age3/n_fish, prop_age12 = n_age12/n_fish,
          phase     = factor(PHASE3(Year),
                             levels = c("Pre-collapse","Collapse","Post-collapse")))
 
@@ -296,9 +297,9 @@ cat(sprintf("Test fishery: %d years (%d-%d), %s aged fish\n",
             format(sum(test_age$n_fish), big.mark = ",")))
 write_csv(test_age, file.path(DERIVED, "test_fishery_age.csv"))
 
-## test-fishery prop_old by statistical area x year — predictor for the site-level models
+## test-fishery prop_old by statistical area x year - predictor for the site-level models
 test_age_area <- bio %>%
-  filter(source == "Test Fishery", stat_area %in% BIO_AREAS,
+  filter(source == "Test Fishery", stat_area %in% BIO_AREAS, keep_tf(source, Year, gear),
          !is.na(age), age >= 1) %>%
   group_by(Year, stat_area) %>%
   summarise(n_fish = n(), prop_old = mean(age >= OLD_AGE), .groups = "drop") %>%
@@ -311,7 +312,7 @@ write_csv(test_age_area, file.path(DERIVED, "test_fishery_age_by_area.csv"))
 ```{r length-at-age}
 len_age <- bio %>%
   filter(stat_area %in% BIO_AREAS,
-         source %in% c("Reduction Fishery","Test Fishery"),
+         source %in% c("Reduction Fishery","Test Fishery"), keep_tf(source, Year, gear),
          !is.na(age), !is.na(length_mm), age %in% 2:10) %>%
   group_by(Year, age, source) %>%
   summarise(mean_len_mm = mean(length_mm), n = n(), .groups = "drop") %>%
@@ -329,7 +330,7 @@ cat(sprintf("Length-at-age series: %d age-year-source cells, %d-%d\n",
 
 Catch is reported by season, which spans two calendar years; each record is assigned to the
 calendar year in which the fishery ended (`New_Year = floor(Season/10) + 1`). Catch is
-decomposed four ways — by statistical area, gear, fishery type, and season of capture —
+decomposed four ways - by statistical area, gear, fishery type, and season of capture -
 because it is the *season and gear* of removal, not the tonnage, that determines which ages
 are taken.
 
@@ -484,9 +485,10 @@ cat(sprintf("annual_series.csv: %d years (%d-%d); complete cases for the driver 
 
 ## 7  Site-level occupancy dataset (areas 13, 14, 15, 17, 18)
 
-The analysis window is 1975–2024, the period covered by test-fishery biosamples. A **known
-site** is any location code recorded in that window; the site universe is therefore the one
-relevant to the analysis, not to the full 1951–2024 series. A site is coded occupied (1) in
+Known sites are defined over 1975-2024, when the test fishery was running; the site models
+themselves use 1977-2024, the years with test-fishery age data. A **known site** is any
+location code recorded in that window; the site universe is therefore the one
+relevant to the analysis, not to the full 1951-2024 series. A site is coded occupied (1) in
 a year if spawn was recorded there, and 0 if its statistical area was surveyed that year but
 the site was not recorded. An area-year counts as surveyed if at least one site in that area
 was recorded. Sites are **not** coded absent in years without area-level survey coverage, so
@@ -540,10 +542,10 @@ write_csv(site_occ, file.path(DERIVED, "site_occupancy_dataset.csv"))
 
 ---
 
-## 8  Historical exploitation rate by statistical area (1951–1983)
+## 8  Historical exploitation rate by statistical area (1951-1983)
 
 Exploitation rate is total catch divided by total pre-fishery biomass (catch + spawn index)
-over 1951–1983, spanning the reduction era, the closure, and the early roe fishery. It is a
+over 1951-1983, spanning the reduction era, the closure, and the early roe fishery. It is a
 time-invariant, area-level predictor used in the site-loss model in `06`.
 
 ```{r exploitation}

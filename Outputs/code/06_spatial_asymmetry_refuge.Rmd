@@ -1,5 +1,5 @@
 ---
-title: "06 — Peripheral collapse and the Area 14 refuge"
+title: "06 - Peripheral collapse and the Area 14 refuge"
 subtitle: "Results 2.4: per-area change, historical exploitation and permanent site loss, site-level occupancy models"
 author: "Sarah Ohayon, Jacob T. Dingwall, Amanda E. Bates"
 date: "`r Sys.Date()`"
@@ -71,9 +71,9 @@ for (a in chg$StatisticalArea)
 ## 2  Historical exploitation predicts permanent site loss
 
 Sites occupied in at least two years before the collapse are classified as **persistent** if
-recorded at least once during 2013–2024, or **collapsed** if absent throughout. Historical
+recorded at least once during 2013-2024, or **collapsed** if absent throughout. Historical
 exploitation rate is an area-level, time-invariant predictor: total catch divided by total
-pre-fishery biomass (catch + spawn index) over 1951–1983.
+pre-fishery biomass (catch + spawn index) over 1951-1983.
 
 A site counts as occupied in a year if spawn was **recorded** there, the same definition used
 by the site-level occupancy models in Section 3. Using recorded presence rather than a
@@ -114,6 +114,18 @@ cat(sprintf("Controlling for pre-collapse longevity: OR = %.2f, P %s (longevity 
             fmt_p(summary(m_expl2)$coefficients[3, 4])))
 print(round(summary(m_expl2)$coefficients, 4))
 
+## exploitation varies only among the five areas, so sites within an area are not independent:
+## the reported model adds a random intercept for area (Results 2.4, Methods)
+m_expl_re  <- glmer(collapsed ~ exploit_s + (1|StatisticalArea), data = cd, family = binomial)
+m_expl2_re <- glmer(collapsed ~ exploit_s + scale(yrs_active_pre) + (1|StatisticalArea),
+                    data = cd, family = binomial)
+for (m in list(m_expl_re, m_expl2_re)) {
+  ci <- exp(confint(m, method = "Wald")["exploit_s", ])
+  cat(sprintf("Area random intercept: OR = %.2f (95%% CI %.2f-%.2f), P %s\n",
+              exp(fixef(m)["exploit_s"]), ci[1], ci[2],
+              fmt_p(summary(m)$coefficients["exploit_s", 4])))
+}
+
 ## assumption-free area-level check
 area_loss <- cd %>% group_by(StatisticalArea) %>%
   summarise(exploit = first(exploit), pct_lost = 100*mean(collapsed),
@@ -131,7 +143,7 @@ kable(area_loss %>% mutate(across(where(is.numeric), ~round(., 3))),
 
 ## 3  Old fish and site occupancy: refuge versus periphery
 
-Across the 1975–2024 window covered by test-fishery biosamples, the probability that a known
+Across 1977-2024, the years with test-fishery age data, the probability that a known
 site is occupied is modelled as a function of the proportion of old fish in that area-year.
 Site identity is a random intercept; **area × year** is a crossed random intercept, which is
 necessary because occupancy and age structure share a common temporal trend within the
@@ -170,7 +182,7 @@ cat(sprintf("Slope of prop_old on logit P(occupied): periphery %+.2f | refuge (A
 
 ### Per-area models
 
-The refuge–periphery contrast is not imposed by the classification: each area is modelled
+The refuge-periphery contrast is not imposed by the classification: each area is modelled
 independently, with year as a crossed random intercept.
 
 ```{r per-area}
@@ -277,7 +289,7 @@ p_occ
 
 ---
 
-## 4  Figure 4 — panels a-c
+## 4  Figure 4 - panels a-c
 
 Panel **d** is built in Section 3 above. The three remaining panels are assembled here from
 `site_year` (a), `chg` (b) and `cd` / `area_loss` (c), so the figure and the statistics come

@@ -1,0 +1,6 @@
+region,n_years,break_year,SE,CI,davies_P
+Strait of Georgia,48,1985,0.2,1984.6-1985.4,4.769999999999999e-88
+West Coast Vancouver Island,49,2011,0.79,2009.5-2012.5,6.5700000000000005e-59
+Central Coast,46,1983,0.19,1982.6-1983.4,8.06e-86
+Prince Rupert District,45,1982.2,0.05,1982.1-1982.3,6.92e-309
+Haida Gwaii,46,2008,0.37,2007.3-2008.7,1.5299999999999993e-240

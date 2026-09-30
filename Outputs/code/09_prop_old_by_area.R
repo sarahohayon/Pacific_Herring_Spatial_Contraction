@@ -1,16 +1,14 @@
 ## =============================================================================
-##  09_prop_old_by_area.R — old-fish proportion within single statistical areas
+## 09_prop_old_by_area.R
+## Proportion of older fish within single statistical areas.
 ##
-##  Q1  Does the 1972-1980 rise in old fish in the roe-gillnet catch hold within
-##      single areas (Area 14 only, Area 17 only), or is it produced by samples
-##      shifting between areas? (Area Licensing, 1981, concentrated gillnet
-##      sampling in Area 14: 52% of samples in 1972-80, 92% in 1981-88.)
-##  Q2  Did Area 14 retain a higher proportion of old fish than the periphery
-##      in the test fishery (the closest index of the spawning population)?
+## 1. Does the 1972-1980 rise in older fish in the roe-gillnet catch hold within single
+##    areas, or does it come from samples shifting between areas?
+## 2. Did Area 14 keep more older fish than the peripheral areas in the test fishery
+##    (Results, "The core also retained its older fish")?
 ##
-##  Same recipe as 01_data_preparation.Rmd: prop_old computed per sample
-##  (season x sample_number, >= MIN_FISH aged fish), then averaged per year.
-##  Run from Outputs/code/:  Rscript 09_prop_old_by_area.R
+## Proportions are computed per sample (at least MIN_FISH aged fish), then averaged per year.
+## Run from Outputs/code:  Rscript 09_prop_old_by_area.R
 ## =============================================================================
 
 source("00_setup.R")
@@ -34,7 +32,8 @@ bio <- bio %>%
            source == "Roe Fishery" & gear_grp == "Gillnet"  ~ "Roe gillnet",
            source == "Roe Fishery" & gear_grp == "Seine"    ~ "Roe seine",
            TRUE ~ NA_character_)) %>%
-  filter(stat_area %in% BIO_AREAS, !is.na(src), !is.na(age), age >= 1, !is.na(weight_g))
+  filter(stat_area %in% BIO_AREAS, !is.na(src), !is.na(age), age >= 1, !is.na(weight_g),
+         keep_tf(source, Year, str_trim(gear)))
 
 ## ---- per-sample, then per area-year ----------------------------------------
 samples <- bio %>%
@@ -137,11 +136,9 @@ emm <- tf %>% group_by(group, phase) %>% summarise(mean = round(mean(prop_old_n)
 print(emm %>% pivot_wider(names_from = group, values_from = c(mean, n)))
 
 ## ---- Q2b: sample-level GLMM (the test to report) -----------------------------
-## The annual-means lm above has little power (8 pre-collapse Area 14 years). Here each
-## test-fishery sample is an observation: year random effect for the shared annual age
-## structure, observation-level random effect for overdispersion. The earlier drafts'
-## beta = 1.29 came from a fish-level binomial GAM with no overdispersion term and no
-## phase split, so it overstated precision and could not show WHEN Area 14 diverged.
+## The annual-means model above has little power (8 pre-collapse Area 14 years), so here
+## each test-fishery sample is an observation, with a year random effect for the shared
+## annual age structure and an observation-level random effect for overdispersion.
 tfs <- bio %>%
   filter(src == "Test fishery", Year >= 1975) %>%
   group_by(stat_area, Year, season, sample_number) %>%

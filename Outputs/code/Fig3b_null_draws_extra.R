@@ -1,14 +1,16 @@
-## Adds the remaining drivers to fig3b_null_draws.csv (same scheme: shift within collapse
-## phase, B = 1000, all draws kept). The five drivers already in the file are NOT recomputed,
-## so the P values already quoted in Table S8 and the Results stay valid.
+## =============================================================================
+## Null draws for the remaining drivers of Figure 3b and Table S8b (ONI, PDO and the two
+## removal metrics). Same scheme as Fig3b_null_draws.R; the draws are appended to its file.
+## Run after Fig3b_null_draws.R.
+## =============================================================================
 suppressMessages({library(tidyverse); library(mgcv); library(nlme)})
 B <- 1000
-ALIGNED <- "/Users/sarah/Documents/Postdoc/Canada Research/Pacific herring/CLAUDE CODE/PAPER/Aligned_2026_08_06"
+ALIGNED <- normalizePath("../..")   # repository root; run from Outputs/code
 f_out <- file.path(ALIGNED, "Outputs/derived/fig3b_null_draws.csv")
 have <- read_csv(f_out, show_col_types = FALSE)
 dm <- read_csv(file.path(ALIGNED, "Outputs/derived/annual_series.csv"), show_col_types = FALSE) %>%
   filter(Year %in% 1951:2024, !is.na(occupancy), !is.na(prop_old_wt), !is.na(mean_SST),
-         !is.na(ONI_ann), !is.na(mean_PDO), !is.na(value_per_ton)) %>%
+         !is.na(ONI_ann), !is.na(mean_PDO)) %>%
   arrange(Year) %>% mutate(phase = factor(if_else(Year < 1984, "Pre", "Post")))
 EXTRA <- tribble(
   ~var,               ~label,                                     ~class,

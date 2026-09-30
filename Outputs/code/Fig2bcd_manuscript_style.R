@@ -1,37 +1,29 @@
-## ============================================================
-## Figure 2 b, c, d in the manuscript style
-## Sarah's plotting code (FIGURE 2 section of Strait_of_Georgia_Pacific_herring 27_05_2026.Rmd,
-## lines 5770-6038), updated 2026-09-15. Panel a is rebuilt unchanged, only so the four panels
-## keep identical widths (align_patches); b, c and d are saved to Figures/Main/Figure 2.
-##
-## b  proportion of old fish by source
-##    - statistical areas 13, 14, 15, 17, 18; source-years with >= 30 aged fish
-##    - gam(cbind(n_old, n_young) ~ source + s(Year, by = source, k = 8, fx = TRUE),
-##          family = quasibinomial)   (the model reported in the Results)
-##    - trend lines drawn only over runs of >= 3 consecutive sampling years
-## c  mean length-at-age
-##    - statistical areas 13, 14, 15, 17, 18 (as in the Methods)
-##    - lines broken across sampling gaps
-##    - "Age" header over the age labels, age labels also at the line ends, light shading 1980-83
-## d  proportion of old fish in the test fishery
-##    - Sarah's segmented regression (change point) kept
-##    - added: darker shading for the collapse years (1984-1986), note that the test fishery begins in 1975
-##      (phase means are printed for the Results, not drawn)
-## Run: Rscript Fig2bcd_manuscript_style.R
-## ============================================================
+## =============================================================================
+## Figure 2 b, c, d
+## b  proportion of older fish by sampling source; quasibinomial GAM with a separate trend
+##    for each source (7 fixed degrees of freedom), the model reported in the Results
+## c  mean length-at-age: reduction fishery before the closure, test fishery after it
+## d  proportion of older fish in the test fishery, with its change point; the 1984-1986
+##    collapse years are shaded
+## Panel a is rebuilt only so that all four panels share the same widths.
+## Panels are saved to Figures/Main/Figure 2.
+## Run from Outputs/code:  Rscript Fig2bcd_manuscript_style.R
+## =============================================================================
 
 suppressMessages({
   library(tidyverse); library(mgcv); library(segmented); library(patchwork)
   library(scales); library(showtext); library(sysfonts)
 })
 
-BASE <- "/Users/sarah/Documents/Postdoc/Canada Research/Pacific herring/CLAUDE CODE"
-OUT  <- file.path(BASE, "PAPER/Aligned_2026_08_06/Figures/Main/Figure 2")
+ALIGNED <- normalizePath("../..")   # repository root; run from Outputs/code
+RAW     <- file.path(ALIGNED, "Raw_data")
+OUT     <- file.path(ALIGNED, "Figures/Main/Figure 2")
+setup <- new.env(); sys.source("00_setup.R", envir = setup)   # biosample column names and year recode
 
 BIO_AREAS <- c(13, 14, 15, 17, 18)
 MIN_FISH  <- 30
 
-## ---- style (Rmd lines 67-111 and 5775-5814, unchanged) ----
+## ---- style ----
 font_add(family = "helvetica", regular = "/System/Library/Fonts/Helvetica.ttc")
 showtext_auto()
 
@@ -78,15 +70,21 @@ age_palette <- setNames(
   c("#2D6A4F","#40916C","#74C69D","#B7E4C7","#FFD166","#F4A261","#E76F51","#C0392B"),
   paste0("Age ", 2:9))
 
-Biosample_sog <- read_csv(file.path(BASE, "Data/Biosample_sog.csv"), show_col_types = FALSE,
-                          guess_max = 100000)
+## test fishery = all months, seine sets, from 1977 (as 00_setup.R keep_tf)
+tf_ok <- function(source, year, gear)
+  source != "Test Fishery" | (as.numeric(year) >= 1977 & gear %in% c("Seine", "Other seine"))
+## the biosample extract has no usable header row: names are assigned from 00_setup.R
+Biosample_sog <- read_csv(file.path(RAW, "Biosample_Strait_of_Georgia.csv"), show_col_types = FALSE,
+                          name_repair = "minimal", guess_max = 100000) %>%
+  setNames(setup$BIO_COLS) %>%
+  mutate(Year = setup$recode_two_digit_year(year))
 
 ## ============================================================
 ## a - catch by fishery / season / gear (unchanged, alignment only)
 ## ============================================================
-SOG_herring_catch_all_fishing_types <- read.csv(file.path(BASE, "Data/SOG_herring_catch_all_fishing_types.csv")) %>%
+SOG_herring_catch_all_fishing_types <- read.csv(file.path(RAW, "SOG_herring_catch_all_fishing_types.csv")) %>%
   mutate(Season = as.numeric(Season), New_Year = floor(Season / 10) + 1)
-SOG_tac <- read.csv(file.path(BASE, "Data/SOG_TAC.csv")) %>% dplyr::select(TAC_metric_tons, New_Year)
+SOG_tac <- read.csv(file.path(RAW, "SOG_TAC.csv")) %>% dplyr::select(TAC_metric_tons, New_Year)
 
 df_fs <- SOG_herring_catch_all_fishing_types %>%
   mutate(catch_mt = suppressWarnings(readr::parse_number(as.character(Sum.of.Catch.metric.tons))),
@@ -140,6 +138,7 @@ age_prop <- Biosample_sog %>%
          old = age >= 5,
          source_clean = factor(source_clean, levels = names(SOURCE_COLS))) %>%
   filter(stock_assessment_region == "Strait of Georgia", stat_area %in% BIO_AREAS,
+         tf_ok(source, Year, gear),
          !is.na(Year), !is.na(age), age >= 1, !is.na(source_clean)) %>%
   group_by(Year, source_clean) %>%
   summarise(n_old = sum(old), n = n(), n_young = n - n_old,
@@ -202,7 +201,7 @@ bio <- Biosample_sog %>%
          length_mm = suppressWarnings(readr::parse_number(as.character(length_mm))),
          stat_area = suppressWarnings(readr::parse_number(as.character(stat_area)))) %>%
   filter(stock_assessment_region == "Strait of Georgia", stat_area %in% BIO_AREAS,
-         source %in% c("Reduction Fishery","Test Fishery"),
+         source %in% c("Reduction Fishery","Test Fishery"), tf_ok(source, Year, gear),
          !is.na(Year), !is.na(age), !is.na(length_mm), age %in% AGES)
 
 len_yr <- bio %>%
@@ -276,7 +275,7 @@ p_length <- ggplot(len_yr, aes(Year, mean_len_cm, colour = age_lbl, linetype = d
 ## ============================================================
 sog_age <- Biosample_sog %>%
   mutate(age = suppressWarnings(as.numeric(age))) %>%
-  filter(month %in% c("3","4","5"), gear %in% c("Seine","Other seine"),
+  filter(Year >= 1977, gear %in% c("Seine","Other seine"),   # all months, from 1977
          source == "Test Fishery", Year >= 1970, !is.na(age)) %>%
   group_by(Year) %>%
   summarise(n_fish = n(), n_age5 = sum(age >= 5), .groups = "drop") %>%
