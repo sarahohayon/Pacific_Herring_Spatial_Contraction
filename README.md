@@ -23,9 +23,11 @@ run_all.R              runs the whole analysis in order
 cd Outputs/code && Rscript ../../run_all.R
 ```
 
-`01` runs first: it builds the derived series that everything else reads. It is also the only
-step that needs the DFO commercial catch extracts, which are not in this repository; without them,
-start at `02`, which runs from the series already in `Outputs/derived/`.
+`01` runs first: it builds the derived series that everything else reads. The commercial catch
+and total allowable catch (TAC) data are not in this repository (see Data). Without them, `01`,
+the catch panels of Figures 1 and 2 (`03`, `Fig2bcd_manuscript_style.R`) and the catch-based parts
+of `04` (Figure 2a and removals at age) cannot be rerun; everything else runs from the series in
+`Outputs/derived/`.
 
 A full run takes about 15 minutes, mostly in `01` (a 100 MB biosample file) and `05` and the
 randomization scripts (thousands of model fits). If `rmarkdown::render` cannot find pandoc
@@ -95,13 +97,15 @@ site is never dropped from its own history for lacking a position.
 | `Lighthouse_Stations_SST_Combined.csv` | DFO BC lighthouse sea-surface temperature | yes |
 | `ONI_index_1950_2025.csv`, `PDO_1854_2025.csv` | NOAA climate indices | yes |
 | `Pacific herring catch and landed value dfo_INFLATION.xlsx` | DFO landed value, deflated with the CPI | yes |
-| `SOG_TAC.csv` | total allowable catch | yes |
+| `SOG_TAC.csv` | total allowable catch, provided by DFO | no, available from DFO on request |
 | `sections/SectionsIntegrated.shp` | DFO herring section boundaries | yes |
 | `Biosample_Strait_of_Georgia.csv.gz` | DFO herring biosample database, Strait of Georgia, 1946-2024 (gzip-compressed; read directly) | yes |
-| `SOG_herring_catch_all_fishing_types*.csv` | DFO commercial catch by season, area, fishery and gear | no, available from DFO on request |
+| `SOG_herring_catch_all_fishing_types*.csv` | DFO commercial catch (reduction, food and bait, roe) by season, area, fishery and gear, provided by DFO | no, available from DFO on request |
 
-The commercial catch extracts are the only inputs not included; every series derived from them is
-in `Outputs/derived/`.
+Commercial catch and TAC data, and the detailed catch series derived from them
+(`catch_decomposition.csv`), are available from DFO on request. Roe-fishery catch is also
+published by DFO on the Open Government Portal. Annual catch totals and the older-fish removal
+series used in the models are included in `Outputs/derived/annual_series.csv`.
 
 The biosample extract is published by DFO as a CSV and stored here gzip-compressed; it has no
 usable header row, so column names are assigned from `BIO_COLS` in

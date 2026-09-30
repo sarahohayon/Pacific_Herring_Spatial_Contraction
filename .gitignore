@@ -1,10 +1,13 @@
-# ---- Restricted DFO extracts -------------------------------------------------
-# The commercial catch extracts were provided by Fisheries and Oceans Canada and are
-# available from DFO on request. Every series derived from them is published in
-# Outputs/derived/, so scripts 02-09 run without these files.
+# ---- DFO data available on request -------------------------------------------
+# Commercial catch (reduction, food and bait, roe) and total allowable catch were
+# provided by Fisheries and Oceans Canada and are available from DFO on request, as
+# is the detailed catch series derived from them.
 SOG_herring_catch_all_fishing_types*.csv
 Raw_data/SOG_herring_catch_all_fishing_types.csv
 Raw_data/SOG_herring_catch_all_fishing_types_2026_03_11.csv
+Raw_data/SOG_TAC.csv
+Outputs/derived/catch_decomposition.csv
+Outputs/derived/cross_region_catch.csv
 
 # The biosample extract is included gzip-compressed (Biosample_Strait_of_Georgia.csv.gz,
 # read directly by the code); the uncompressed copy is over GitHub's 100 MB file limit.

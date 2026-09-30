@@ -4,9 +4,8 @@
 ##   cd Outputs/code && Rscript ../../run_all.R
 ##
 ## 01 runs first: it builds the derived series that everything else reads, and it
-## is the only step that needs the DFO commercial catch extracts, which are not
-## in this repository (see README). Without them, start at 02: the derived series in
-## Outputs/derived/ are enough to run everything else.
+## needs the DFO catch and TAC data, which are available on request and not in this
+## repository (see README); so do the catch panels of Figures 1 and 2.
 ##
 ## Each step runs in its own R session. Scripts in extra/ are not part of the paper.
 ## ---------------------------------------------------------------------------
