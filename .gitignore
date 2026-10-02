@@ -17,12 +17,52 @@ Raw_data/Biosample_Strait_of_Georgia.csv
 *.docx
 ~$*.docx
 
-# ---- Working artwork: Inkscape masters and photographs -----------------------
-# The final figures ship as PDF and PNG; the layered SVG masters (25-30 MB each)
-# and the third-party photographs in "Figure 0" are not part of the analysis.
-Figures/Main/Figure 0/
-Figures/untitled folder/
+# ---- Figures: only those in the paper -----------------------------------------
+# Final figures and the panels the code draws for them. Working drafts, the layered
+# SVG masters and exploratory plots stay local.
 *.svg
+Figures/**
+!Figures/**/
+!Figures/Main/Figure 1/Figure 1.pdf
+!Figures/Main/Figure 1/Figure 1.png
+!Figures/Main/Figure 1/SoG_sum_2026_09_15/p_occupancy.pdf
+!Figures/Main/Figure 1/SoG_sum_2026_09_15/hystersis.pdf
+!Figures/Main/Figure 1/SoG_sum_2026_09_15/SOG_quantile_gam.pdf
+!Figures/Main/Figure 2/Figure 2.png
+!Figures/Main/Figure 2/Fig2b_propold_by_source.pdf
+!Figures/Main/Figure 2/Fig2c_length_at_age.pdf
+!Figures/Main/Figure 2/Fig2d_propold_testfishery.pdf
+!Figures/Main/Figure 3/Figure3_final.pdf
+!Figures/Main/Figure 3/Figure3_final.png
+!Figures/Main/Figure 3/Fig3a_occupancy_prediction.pdf
+!Figures/Main/Figure 3/Fig3b_variance_vs_chance.pdf
+!Figures/Main/Figure 4/Figure 4.pdf
+!Figures/Main/Figure 4/Figure 4.png
+
+Outputs/figures/*
+!Outputs/figures/Fig1a_SSB.*
+!Outputs/figures/Fig1e_catch_by_area.*
+!Outputs/figures/Fig1f_value_per_tonne.*
+!Outputs/figures/Fig2a_catch_by_fishery_gear.*
+!Outputs/figures/Fig4a_spawn_sites_two_periods.*
+!Outputs/figures/Fig4b_percent_change_by_area.*
+!Outputs/figures/Fig4c_site_loss_vs_exploitation.*
+!Outputs/figures/Fig4d_site_occupancy_refuge_periphery.*
+!Outputs/figures/FigureS[1-5]_*
+
+# ---- Code and outputs not used in the paper ----------------------------------
+Outputs/code/extra/
+Outputs/derived/cross_region_*.csv
+Outputs/derived/north_south_series.csv
+Outputs/derived/exploitation_at_age.csv
+Outputs/tables/cross_region_results.csv
+Outputs/tables/north_south_results.csv
+Outputs/tables/test_fishery_*_by_region.csv
+Outputs/tables/exploitation_at_age_summary.csv
+Outputs/tables/old_fish_tonnes_at_age.csv
+Outputs/tables/tonnes_at_age_series.csv
+Outputs/tables/randomisation_R2_by_driver.csv
+Outputs/code/*_files/
 
 # ---- R and macOS junk --------------------------------------------------------
 .Rhistory

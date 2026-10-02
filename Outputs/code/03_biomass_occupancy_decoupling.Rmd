@@ -462,42 +462,14 @@ pS1
 
 ---
 
-## 6  Figure 1 - the assembled panels
+## 6  Figure 1 - panels a, e and f
 
-All six panels of Figure 1 are built here from the derived series, so the figure and the
-statistics above can never diverge. Panels **a** and **b** plot the same `SSB` and
-`occupancy` columns used by every model in this chapter: SSB is the sum of all spawn records
-(the DFO spawn index; §1 of chapter 01) and occupancy is over the `r N_all` historically-used
-sections, counting every recorded spawn, including records without a biomass estimate.
+Panels **a**, **e** and **f** of Figure 1 are built here from the derived series, so the
+figure and the statistics above can never diverge (panels b, c and d are drawn by
+`Fig1_bcd_SoG_pipeline.R`). Panel **a** plots the same `SSB` column used by every model in
+this chapter: the sum of all spawn records (the DFO spawn index; §1 of chapter 01).
 
 ```{r fig1-data}
-## Hysteresis needs the long era labels that carry the year ranges into the legend.
-d_hyst <- d %>%
-  mutate(phase2 = factor(if_else(Year < BREAK_YEAR, PHASE_LEVELS[1], PHASE_LEVELS[2]),
-                         levels = PHASE_LEVELS))
-pre_h  <- d_hyst %>% filter(phase2 == PHASE_LEVELS[1])
-post_h <- d_hyst %>% filter(phase2 == PHASE_LEVELS[2])
-pre_hull  <- pre_h [chull(pre_h$SSBk,  pre_h$occupancy),  ]
-post_hull <- post_h[chull(post_h$SSBk, post_h$occupancy), ]
-
-## Latitudinal extent: occupied locations, with 5th/95th percentile edges smoothed.
-lat_pts <- site_year %>%
-  filter(Year %in% 1951:2025) %>%
-  mutate(area_f = factor(as.character(StatisticalArea), levels = names(area_cols)))
-
-lat_q <- lat_pts %>% group_by(Year) %>%
-  summarise(lat05 = quantile(Latitude, 0.05, na.rm = TRUE),
-            lat95 = quantile(Latitude, 0.95, na.rm = TRUE), .groups = "drop")
-
-g05 <- gam(lat05 ~ s(Year, k = 16), data = lat_q)
-g95 <- gam(lat95 ~ s(Year, k = 10), data = lat_q)
-lat_grid <- tibble(Year = seq(min(lat_q$Year), max(lat_q$Year), length.out = 200))
-.f05 <- predict(g05, lat_grid, se.fit = TRUE)
-.f95 <- predict(g95, lat_grid, se.fit = TRUE)
-lat_edge <- bind_rows(
-  tibble(Year = lat_grid$Year, fit = .f05$fit, se = .f05$se.fit, edge = "q05"),
-  tibble(Year = lat_grid$Year, fit = .f95$fit, se = .f95$se.fit, edge = "q95"))
-
 ## Catch by management area, with the TAC overlaid.
 catch_area <- read_csv(file.path(DERIVED, "catch_decomposition.csv"), show_col_types = FALSE) %>%
   group_by(Year, area) %>%
@@ -525,7 +497,7 @@ cat(sprintf("Fig 1 inputs | SSB %d-%d | catch areas %d | TAC %d yr | value %d yr
             nrow(tac), sum(!is.na(value_two$Real2024))))
 ```
 
-```{r fig1-panels, fig.width=16, fig.height=15}
+```{r fig1-panels, fig.width=9, fig.height=15}
 shade_layer <- geom_rect(data = shade_df,
                          aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                          inherit.aes = FALSE, fill = "grey85", alpha = 0.45)
@@ -539,56 +511,6 @@ p1a <- ggplot(d, aes(Year, SSBk)) +
   scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
   labs(x = "Year", y = "SSB (×1000 tonnes)") +
   common_panel
-
-## ---- b  Spawning occupancy --------------------------------------------------
-p1b <- ggplot(d, aes(Year, occupancy)) +
-  shade_layer +
-  geom_line(linewidth = 0.9, lineend = "round") +
-  geom_smooth(method = "gam", formula = y ~ s(x, k = 10), se = TRUE,
-              colour = "darkblue", fill = "grey75", linewidth = 1) +
-  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)),
-                     labels = percent_format(accuracy = 1)) +
-  labs(x = "Year", y = "Spawning occupancy") +
-  common_panel
-
-## ---- c  Biomass-occupancy hysteresis ---------------------------------------
-p1c <- ggplot(d_hyst, aes(SSBk, occupancy)) +
-  geom_polygon(data = pre_hull,  aes(SSBk, occupancy), inherit.aes = FALSE,
-               fill = phase_hull[[1]], alpha = 0.28) +
-  geom_polygon(data = post_hull, aes(SSBk, occupancy), inherit.aes = FALSE,
-               fill = phase_hull[[2]], alpha = 0.22) +
-  geom_path(colour = "grey60", linewidth = 0.4, alpha = 0.55) +
-  geom_point(aes(fill = phase2, colour = phase2), shape = 21, size = 3.4, stroke = 0.5) +
-  scale_fill_manual(values = phase_fill, name = NULL) +
-  scale_colour_manual(values = phase_edge, name = NULL, guide = "none") +
-  scale_x_continuous(labels = label_number(big.mark = ","),
-                     expand = expansion(mult = c(0.02, 0.04))) +
-  scale_y_continuous(labels = percent_format(accuracy = 1),
-                     expand = expansion(mult = c(0.05, 0.15))) +
-  labs(x = "SSB (×1000 tonnes)", y = "Spawning occupancy") +
-  theme_science +
-  theme(legend.position = c(0.98, 0.98), legend.justification = c(1, 1),
-        legend.background = element_rect(fill = alpha("white", 0.6), colour = NA),
-        legend.key = element_blank(), panel.grid = element_blank())
-
-## ---- d  Latitudinal extent --------------------------------------------------
-p1d <- ggplot(lat_pts, aes(Year, Latitude)) +
-  shade_layer +
-  geom_point(aes(size = spawn_bio, colour = area_f), alpha = 0.65) +
-  geom_ribbon(data = lat_edge, aes(x = Year, ymin = fit - 1.96*se, ymax = fit + 1.96*se,
-                                   group = edge),
-              inherit.aes = FALSE, fill = "grey30", alpha = 0.18) +
-  geom_line(data = lat_edge, aes(x = Year, y = fit, group = edge),
-            inherit.aes = FALSE, colour = "grey25", linewidth = 0.9) +
-  scale_size_continuous(name = "Spawning biomass (t)", range = c(0.6, 5.5),
-                        labels = label_number(big.mark = ",")) +
-  scale_colour_manual(values = area_cols, name = "Management area", drop = TRUE) +
-  scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
-  labs(x = "Year", y = "Latitude (°N)") +
-  ## the point cloud fills the panel, so this legend goes outside it
-  common_panel_legend(pos = "bottom", just = "center") +
-  guides(colour = guide_legend(override.aes = list(size = 5, alpha = 1), nrow = 2),
-         size   = "none")
 
 ## ---- e  Catch by management area, with TAC ---------------------------------
 p1e <- ggplot(catch_area, aes(Year, catch_kt, fill = area_f)) +
@@ -613,18 +535,12 @@ p1f <- ggplot(value_two, aes(Year)) +
   labs(x = "Year", y = "Value per tonne (×1000 CAD)") +
   common_panel
 
-for (nm in c("a","b","c","d","e","f")) {
+## panels b, c and d of Figure 1 are drawn by Fig1_bcd_SoG_pipeline.R
+for (nm in c("a","e","f")) {
   save_fig(get(paste0("p1", nm)), paste0("Fig1", nm, "_",
-    c(a="SSB", b="occupancy", c="hysteresis", d="latitudinal_extent",
-      e="catch_by_area", f="value_per_tonne")[[nm]]))
+    c(a="SSB", e="catch_by_area", f="value_per_tonne")[[nm]]))
 }
-
-fig1 <- (p1a | p1d) / (p1b | p1e) / (p1c | p1f) +
-  plot_annotation(tag_levels = list(c("a","d","b","e","c","f"))) &
-  theme(plot.tag = element_text(size = 26, face = "bold"))
-
-save_fig(fig1, "Figure1_biomass_occupancy_decoupling", width = 18, height = 16)
-fig1
+p1a / p1e / p1f
 ```
 
 ---

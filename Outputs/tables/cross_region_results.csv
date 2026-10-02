@@ -1,8 +1,0 @@
-region,N_sections,n_years,supF,break_year,occ_pre,occ_post,change_pct,edf,P,adj_R2
-Haida Gwaii,6,25,16,1994,77,62,-19,1,0.772,-0.118
-Prince Rupert District,7,59,6,NA,NA,NA,NA,1,0.796,-0.014
-Central Coast,18,47,21,1994,55,46,-17,2.48,0.217,0.142
-Strait of Georgia,19,67,190,1980,68,34,-50,2.42,9.44e-6,0.54
-West Coast Vancouver Island,11,40,129,1979,77,48,-38,1,6.4e-7,0.524
-Area 27,3,11,23,1999,59,33,-43,1,0.235,-0.044
-Area 2W,5,3,14,1994,60,35,-42,NA,NA,NA

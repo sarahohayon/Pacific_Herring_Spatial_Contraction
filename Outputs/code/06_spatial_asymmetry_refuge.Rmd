@@ -119,6 +119,8 @@ print(round(summary(m_expl2)$coefficients, 4))
 m_expl_re  <- glmer(collapsed ~ exploit_s + (1|StatisticalArea), data = cd, family = binomial)
 m_expl2_re <- glmer(collapsed ~ exploit_s + scale(yrs_active_pre) + (1|StatisticalArea),
                     data = cd, family = binomial)
+## Fig. 4c reports the area random-intercept model
+OR <- exp(fixef(m_expl_re)["exploit_s"]); p_or <- summary(m_expl_re)$coefficients["exploit_s", 4]
 for (m in list(m_expl_re, m_expl2_re)) {
   ci <- exp(confint(m, method = "Wald")["exploit_s", ])
   cat(sprintf("Area random intercept: OR = %.2f (95%% CI %.2f-%.2f), P %s\n",

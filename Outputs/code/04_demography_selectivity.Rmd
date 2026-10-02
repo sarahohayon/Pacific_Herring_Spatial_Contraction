@@ -583,13 +583,12 @@ kable(annual %>% filter(Year %in% 1972:1983) %>% transmute(Year, `older removed 
 
 ---
 
-## 6  Figure 2 - the assembled panels
+## 6  Figure 2 - panel a
 
-The four panels are built from the same objects the statistics above are computed from:
-`catchdec` (a), `gd` (b), `la` (c) and `ta` (d). Every panel carries the same two bands -
-red for the 1968-1971 closure, grey for the post-collapse era.
+Panel **a** is built from `catchdec`, the same catch decomposition used above; panels b, c
+and d are drawn by `Fig2bcd_manuscript_style.R`.
 
-```{r fig2-panels, fig.width=16, fig.height=11}
+```{r fig2-panels, fig.width=9, fig.height=6}
 shade_layer <- geom_rect(data = shade_df,
                          aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                          inherit.aes = FALSE, fill = "grey85", alpha = 0.45)
@@ -616,86 +615,9 @@ p2a <- ggplot(fg, aes(Year, catch_kt, fill = cat)) +
   common_panel_legend(pos = c(0.99, 0.99), just = c(1, 1)) +
   guides(fill = guide_legend(nrow = 2))
 
-## ---- b  Proportion old by sampling source ----------------------------------
-p2b <- ggplot(gd, aes(Year, prop_old_n, colour = src)) +
-  shade_layer + band_closure() +
-  geom_line(linewidth = 0.7, alpha = 0.55) +
-  geom_point(size = 1.6, alpha = 0.75) +
-  geom_smooth(method = "gam", formula = y ~ s(x, k = 8), se = FALSE, linewidth = 1.3) +
-  scale_colour_manual(values = src_cols, name = NULL) +
-  scale_y_continuous(labels = percent_format(accuracy = 1),
-                     expand = expansion(mult = c(0.03, 0.12))) +
-  labs(x = "Year", y = "Proportion age ≥ 5") +
-  common_panel_legend(pos = c(0.01, 0.99), just = c(0, 1)) +
-  guides(colour = guide_legend(nrow = 2, override.aes = list(size = 4, linewidth = 1.4)))
-
-## ---- c  Length-at-age ------------------------------------------------------
-age_pal <- setNames(viridisLite::viridis(length(sort(unique(la$age))),
-                                         option = "C", end = 0.85),
-                    paste("Age", sort(unique(la$age))))
-la_p <- la %>% mutate(age_lbl = factor(paste("Age", age), levels = names(age_pal)))
-
-## Age 8 is recorded in 15 years spanning 1958-2001 with a 22-year gap, and age 9
-## in a single year. A loess fitted to those interpolates straight across the gap
-## and produces a trend that is an artefact of the gap, not of growth. Trend lines
-## are therefore drawn only for age classes with a long, reasonably continuous
-## run; the raw series is kept for every age class.
-age_cover <- la_p %>% group_by(age_lbl) %>%
-  summarise(n_years = n_distinct(Year),
-            max_gap = max(diff(sort(unique(Year))), na.rm = TRUE), .groups = "drop")
-well_sampled <- age_cover %>% filter(n_years >= 30, max_gap <= 15) %>% pull(age_lbl)
-cat("Trend lines drawn for:", paste(well_sampled, collapse = ", "), "\n")
-
-p2c <- ggplot(la_p, aes(Year, mean_len_mm/10, colour = age_lbl)) +
-  shade_layer + band_closure() +
-  geom_line(aes(linetype = data_source), linewidth = 0.5, alpha = 0.6) +
-  geom_point(size = 1.2, alpha = 0.6) +
-  geom_smooth(data = filter(la_p, age_lbl %in% well_sampled),
-              aes(group = age_lbl), method = "loess", span = 0.5,
-              se = FALSE, linewidth = 1.1) +
-  scale_colour_manual(values = age_pal, name = "Age class") +
-  scale_linetype_manual(values = c("Reduction fishery" = "dashed",
-                                   "Test fishery" = "solid"), name = NULL, guide = "none") +
-  scale_y_continuous(expand = expansion(mult = c(0.05, 0.1))) +
-  labs(x = "Year", y = "Mean length (cm)") +
-  common_panel_legend(pos = "bottom", just = "center") +
-  guides(colour = guide_legend(nrow = 1, override.aes = list(size = 4, linewidth = 1.4)))
-
-## ---- d  Proportion old in the test fishery ---------------------------------
-## The statistic reported in the text is the three-phase contrast, not a trend,
-## so the phase means are drawn directly rather than a smooth that averages the
-## collapse dip away.
-phase_means <- ta %>% group_by(phase) %>%
-  summarise(m = mean(prop_age5), x0 = min(Year), x1 = max(Year), .groups = "drop")
-
-p2d <- ggplot(ta, aes(Year, prop_age5)) +
-  shade_layer + band_closure() +
-  geom_line(colour = "grey35", linewidth = 0.7) +
-  geom_point(aes(size = n_fish), colour = col_old, alpha = 0.75) +
-  geom_segment(data = phase_means,
-               aes(x = x0, xend = x1, y = m, yend = m),
-               inherit.aes = FALSE, colour = col_old, linewidth = 1.6) +
-  geom_text(data = phase_means, aes(x = (x0 + x1)/2, y = m, label = sprintf("%.2f", m)),
-            inherit.aes = FALSE, vjust = -0.8, size = 5.5, colour = col_old) +
-  scale_size_area(name = "Fish aged", max_size = 6, labels = label_number(big.mark = ",")) +
-  scale_y_continuous(labels = percent_format(accuracy = 1),
-                     expand = expansion(mult = c(0.05, 0.15))) +
-  labs(x = "Year", y = "Proportion age ≥ 5 (test fishery)") +
-  common_panel_legend(pos = c(0.99, 0.99), just = c(1, 1)) +
-  guides(size = guide_legend(nrow = 1))
-
-for (nm in c("a","b","c","d")) {
-  save_fig(get(paste0("p2", nm)), paste0("Fig2", nm, "_",
-    c(a="catch_by_fishery_gear", b="prop_old_by_source",
-      c="length_at_age", d="prop_old_test_fishery")[[nm]]))
-}
-
-fig2 <- (p2a | p2b) / (p2c | p2d) +
-  plot_annotation(tag_levels = "a") &
-  theme(plot.tag = element_text(size = 26, face = "bold"))
-
-save_fig(fig2, "Figure2_size_selective_demography", width = 18, height = 12)
-fig2
+## panels b, c and d of Figure 2 are drawn by Fig2bcd_manuscript_style.R
+save_fig(p2a, "Fig2a_catch_by_fishery_gear")
+p2a
 ```
 
 ---

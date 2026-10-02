@@ -318,9 +318,6 @@ p3r2 <- ggplot() +
 ## only the two final panels are saved, as separate files for assembly in Inkscape
 ggsave(file.path(OUT, "Fig3a_occupancy_prediction.pdf"), p3e,  width = 10, height = 6)
 ggsave(file.path(OUT, "Fig3b_variance_vs_chance.pdf"),   p3r2, width = 10, height = 8.5)
-## both panels in one file, no a/b tags (labels added by hand in Inkscape)
-ggsave(file.path(OUT, "Figure3_both_panels.pdf"), (p3e | p3r2) + plot_layout(widths = c(1, 1)),
-       width = 19, height = 7.5)
 ## final Figure 3: both panels with bold a/b tags on a compact canvas (text stays large once placed)
 fig3 <- (p3e | p3r2) + plot_layout(widths = c(1.6, 1)) +
   plot_annotation(tag_levels = "a") &

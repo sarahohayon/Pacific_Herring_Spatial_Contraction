@@ -193,27 +193,4 @@ cat(sprintf("Post-collapse years with both sampled: %d; Area 14 higher in %d; me
             fmt_p(t.test(paired$Refuge14, paired$Periphery, paired = TRUE)$p.value)))
 save_tab(glmm_tab, "prop_old_testfishery_area14_glmm")
 
-## ---- figure ------------------------------------------------------------------
-plot_df <- annual_area %>%
-  filter(src %in% c("Roe gillnet", "Test fishery"), Year >= 1972) %>%
-  mutate(area = factor(stat_area),
-         value = ifelse(src == "Roe gillnet", prop_old_wt, prop_old_n),
-         panel = ifelse(src == "Roe gillnet",
-                        "a  Roe-gillnet catch (proportion age ≥5 by weight)",
-                        "b  Test fishery (proportion age ≥5 by count)"))
-
-p <- ggplot(plot_df, aes(Year, value, colour = area)) +
-  band_postcoll() +
-  geom_point(aes(size = n_samples), alpha = 0.45) +
-  geom_smooth(method = "loess", span = 0.5, se = FALSE, linewidth = 1,
-              data = plot_df %>% group_by(panel, area) %>% filter(n() >= 8)) +
-  geom_vline(xintercept = 1981, linetype = "dashed", colour = "grey40") +
-  facet_wrap(~ panel, ncol = 1, scales = "free_y") +
-  scale_colour_manual(values = area_cols, name = "Statistical area") +
-  scale_size_area(max_size = 4, name = "Samples") +
-  scale_x_continuous(limits = c(1972, 2025), breaks = seq(1975, 2025, 10)) +
-  labs(x = "Year", y = "Proportion of old fish",
-       caption = "Dashed line: 1981 Area Licensing. Grey: post-collapse (≥1984). Lines: loess for areas with ≥8 sampled years.") +
-  theme_herring()
-save_fig(p, "prop_old_by_area", width = 9, height = 8)
-cat("\nWrote Outputs/figures/prop_old_by_area.png and tables prop_old_*_by_area*.csv\n")
+cat("\nWrote tables prop_old_*_by_area*.csv\n")

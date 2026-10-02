@@ -8,11 +8,10 @@ here, starting from the raw DFO extracts.
 
 ```
 Outputs/code/          the analysis: 00_setup.R, 01-09, and the figure scripts
-Outputs/code/extra/    analyses explored during the study but not reported in the paper
 Outputs/derived/       series built by 01 and read by everything else
 Outputs/tables/        one CSV per supplementary table, plus supporting tables
-Outputs/figures/       every generated figure, PDF and PNG
-Figures/               final figures as used in the paper
+Outputs/figures/       figure panels drawn by 01-08 (Figs. 1a,e,f, 2a, 4a-d) and Figs. S1-S5
+Figures/Main/          Figures 1-4 as published, and the panels drawn by the Fig* scripts
 Raw_data/              input data (see Data below)
 run_all.R              runs the whole analysis in order
 ```
@@ -44,8 +43,8 @@ export RSTUDIO_PANDOC="/Applications/RStudio.app/Contents/Resources/app/quarto/b
 | `00_setup.R` | paths, analysis constants, the presence rule, the test-fishery rule, themes and palettes. Read by every other file. |
 | `01_data_preparation.Rmd` | all derived series in `Outputs/derived/` |
 | `02_contraction_metrics.Rmd` | eleven contraction metrics and the PCA behind the choice of response (**Table S6**) |
-| `03_biomass_occupancy_decoupling.Rmd` | biomass-occupancy decoupling and spawning phenology (**Fig. 1**, **Fig. S1**, **Tables S1, S7**) |
-| `04_demography_selectivity.Rmd` | fishery selectivity and age structure (**Fig. 2**, **Fig. S3**); loss of older fish versus recruitment dilution, mortality and removals at age (**Table S10**) |
+| `03_biomass_occupancy_decoupling.Rmd` | biomass-occupancy decoupling and spawning phenology (**Fig. 1a, e, f**, **Fig. S1**, **Tables S1, S7**) |
+| `04_demography_selectivity.Rmd` | fishery selectivity and age structure (**Fig. 2a**, **Fig. S3**); loss of older fish versus recruitment dilution, mortality and removals at age (**Table S10**) |
 | `05_occupancy_drivers_GAMM.Rmd` | models of spawning occupancy, robustness checks and subset refits (**Figs. S4, S5**, **Tables S2-S5, S7**) |
 | `06_spatial_asymmetry_refuge.Rmd` | spatial collapse, historical exploitation and the Area 14 refuge (**Fig. 4**) |
 | `08_roe_gillnet_age_composition.Rmd` | age composition of the roe-gillnet catch against the test fishery (**Fig. S2**) |
@@ -58,12 +57,9 @@ export RSTUDIO_PANDOC="/Applications/RStudio.app/Contents/Resources/app/quarto/b
 | `Fig3_randomisation_test.R` | slope randomizations and the gear-era model (**Table S8a**) |
 | `Fig3_manuscript_style.R` | Figure 3 a, b |
 
-Main-text figures are saved both as single panels (for assembling the final layout) and as a
-combined figure. The HTML report next to each `.Rmd` holds its printed output.
-
-The scripts in `extra/` (a roe-era summary, the comparison with other BC stocks, age-specific
-exploitation and supplementary catch plots) were used to check the results but are not
-reported in the paper; some of them need DFO data that are not in this repository.
+Main-text figures are drawn as single panels and assembled into the final layout by hand;
+the assembled Figures 1-4 are in `Figures/Main/`. The HTML report next to each `.Rmd` holds
+its printed output.
 
 ## Decisions used throughout
 
